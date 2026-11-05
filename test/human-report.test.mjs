@@ -14,7 +14,8 @@ test('overview leads with named charts, preserves paired overhead, and links the
   const results = [run('native-empty', 10), run('wasm-empty', 15), run('native-empty', 20, {}, 2), run('wasm-empty', 30, {}, 2)];
   const report = buildReport(manifest, results);
   assert.equal(report, renderReport(manifest, results));
-  assert.ok(report.startsWith('# CDS-Oyster performance results\n\n## Oyster overhead\n\n' + fence));
+  assert.ok(report.startsWith('# CDS-Oyster performance results'));
+  assert.ok(report.indexOf(fence) < report.indexOf('## What the results show'));
   assert.match(report, /INSERT: empty handler/);
   assert.match(report, /Native empty handler/);
   assert.match(report, /Oyster empty handler/);
@@ -56,7 +57,8 @@ test('whole-scan chart leads with total seconds and excludes invocation timing f
   const results = [{ ...run('native-compute', 60, extra), wholeScanElapsedSeconds: 1.2 },
     { ...run('wasm-compute', 700, extra), wholeScanElapsedSeconds: 14 }];
   const report = buildReport(manifest, results);
-  assert.ok(report.startsWith('# CDS-Oyster performance results\n\n## Processing the whole million-row table\n\n' + fence));
+  assert.ok(report.indexOf('## Processing the whole million-row table') < report.indexOf(fence));
+  assert.ok(report.indexOf(fence) < report.indexOf('## What the results show'));
   assert.match(report, /bar \[1\.2, 14\]/);
   assert.match(report, /\+12\.8 seconds/);
   assert.doesNotMatch(report, /bar \[60, 700\]/);
@@ -69,7 +71,7 @@ test('missing data produces no invented chart or numeric observations', () => {
   assert.doesNotMatch(report, /NaN|Infinity|undefined/);
 });
 
-test('all six questions cite measured native/Oyster CPU, CQL, loops and heavy-load evidence', () => {
+test('standalone findings cite measured native/Oyster CPU, CQL, loops and heavy-load evidence', () => {
   const results = [];
   for (const operation of ['create', 'update', 'read', 'action']) {
     for (const [mode, ms] of [['cap-baseline', 5], ['oyster-idle', 6], ['native-empty', 7], ['wasm-empty', 10],
@@ -91,30 +93,33 @@ test('all six questions cite measured native/Oyster CPU, CQL, loops and heavy-lo
     probe: { p95Ms: value / 2 }, resources: { clientCpuPercent: 25 },
   });
   const report = buildReport(manifest, results);
-  assert.match(report, /## Answers to the six questions/);
-  for (const question of ['CAP custom logic', 'Execution in Oyster', 'Net Oyster overhead', 'Callbacks versus native CQL', 'Large-result loops', 'Heavy-load behavior'])
+  assert.match(report, /## What the results show/);
+  assert.doesNotMatch(report, /six questions|original question|hook flag|workload dimensions/i);
+  for (const term of ['Cloud Application Programming Model', 'WebAssembly', 'query language', 'CQL callback', 'extension point', '95th-percentile', 'local SQLite']) assert.ok(report.includes(term), term);
+  assert.match(report, /Benchmark setup and interpretation/);
+  for (const question of ['Cost of native custom logic', 'Cost of moving logic into Oyster', 'Cost of enabling and invoking Oyster', 'Cost of database callbacks', 'Cost of processing larger results', 'Behavior under concurrent load'])
     assert.ok(report.includes('| ' + question + ' |'), question);
-  const answers = report.split('## Answers to the six questions')[1].split(/\n## /)[0];
+  const answers = report.split('## What the results show')[1].split(/\n## /)[0];
   assert.doesNotMatch(answers, /Unanswered: no eligible/);
   assert.match(answers, /\+5 ms/);
   assert.match(report, /\+150 ms/);
   assert.match(report, /direct database/i);
-  assert.match(report, /Declared extension points/);
+  assert.match(report, /Calling predefined extension points/);
   assert.match(report, /1,000-row table/);
   assert.match(report, /million-row table/);
   assert.match(report, /Unrelated probe p95/);
   assert.match(report, /Dropped starts/);
-  assert.ok(report.split('\n').length <= 200);
+  assert.ok(report.split('\n').length <= 230);
   assert.match(report, /\[README\]\(\.\.\/\.\.\/README\.md\)/);
 });
 
-test('missing controls leave every question and extension-point coverage explicitly unanswered', () => {
+test('missing controls leave every finding and extension-point comparison explicitly unmeasured', () => {
   const report = buildReport(manifest, []);
-  const answers = report.split('## Answers to the six questions')[1]?.split(/\n## /)[0] || '';
-  assert.equal((answers.match(/\| Unanswered:/g) || []).length, 6);
-  assert.match(report, /Declared extension points/);
-  assert.match(report, /CQL read: unanswered/i);
-  assert.match(report, /CQL write: unanswered/i);
+  const answers = report.split('## What the results show')[1]?.split(/\n## /)[0] || '';
+  assert.equal((answers.match(/\| Not measured:/g) || []).length, 6);
+  assert.match(report, /Calling predefined extension points/);
+  assert.match(report, /CQL read: not measured/i);
+  assert.match(report, /CQL update: not measured/i);
 });
 
 test('late load failures remain visible and never become successful latency or overhead', () => {
@@ -126,7 +131,7 @@ test('late load failures remain visible and never become successful latency or o
   assert.match(report, /200 requests\/s/);
   assert.match(report, /\| 3 \|.*\| 2 \| 7 \|/);
   assert.doesNotMatch(report, /bar \[999\]|bar \[1500\]/);
-  assert.match(report, /Unanswered:/);
+  assert.match(report, /Not measured:/);
 });
 
 test('a failed duplicate cannot rescue a matching repetition or inflate independent metrics', () => {
@@ -136,7 +141,7 @@ test('a failed duplicate cannot rescue a matching repetition or inflate independ
   assert.doesNotMatch(report, /\+5 ms/);
 });
 
-test('all six original questions have measured answers for a complete protocol', () => {
+test('all benchmark findings have measured results for a complete protocol', () => {
   const results = [];
   for (const operation of ['create', 'update', 'read', 'action'])
     for (const [mode, mean] of [['cap-baseline', 5], ['oyster-idle', 6], ['native-empty', 6], ['wasm-empty', 8], ['native-compute', 10], ['wasm-compute', 20], ['native-compute-read', 15], ['wasm-compute-read', 30], ['native-compute-write', 15], ['wasm-compute-write', 30]])
@@ -146,7 +151,7 @@ test('all six original questions have measured answers for a complete protocol',
   for (const value of [8, 32]) for (const mode of ['cap-baseline', 'native-compute-read', 'wasm-compute-read'])
     results.push({ ...run(mode, 20, { operation: 'action' }), load: { kind: 'vus', value }, stats: { successes: 20, errors: 0, meanMs: 20, p95Ms: value * 2, successfulRps: 100 } });
   const report = buildReport({ ...manifest, settings: { suite: 'short', repetitions: 1 } }, results);
-  const answers = report.split('## Answers to the six questions')[1].split(/\n## /)[0];
+  const answers = report.split('## What the results show')[1].split(/\n## /)[0];
   assert.doesNotMatch(answers, /Not measured|Unanswered/);
   assert.match(report, /Extra callback cost/);
   assert.match(report, /\+8 ms/);
@@ -157,6 +162,6 @@ test('the heavy-load table retains both concurrency levels for the same workload
     load: { kind: 'vus', value }, stats: { successes: 100, errors: 0, meanMs: value, p95Ms: value * 2, successfulRps: 100 / value } }));
   const report = buildReport(manifest, results);
   const loadTable = report.split('| Workload / execution |')[1].split('Throughput averages')[0];
-  assert.match(loadTable, /32 concurrent users/);
-  assert.match(loadTable, /8 concurrent users/);
+  assert.match(loadTable, /32 concurrent clients/);
+  assert.match(loadTable, /8 concurrent clients/);
 });

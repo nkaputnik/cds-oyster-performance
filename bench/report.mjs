@@ -291,7 +291,7 @@ function answers(manifest, results, findings, callbacks) {
   const caveat = manifest.settings?.suite === 'smoke'
     ? 'These smoke observations provide exploratory timing; they do not establish stable overhead or capacity. Recorded validation determines which execution paths are verified.'
     : 'Conclusions apply only to the measured fixture, settings and host. A single matched repetition does not establish stable overhead or capacity.';
-  return table(['Original question', 'Evidence-backed answer'], rows) + '\n\n' + caveat;
+  return table(['Benchmark comparison', 'Observed result'], rows) + '\n\n' + caveat;
 }
 
 const sequences = `### Native workload
@@ -434,7 +434,7 @@ export function buildDetailedReport(manifest = {}, results = []) {
     '## Evidence',
     '[Manifest](manifest.json), [Results JSON](results.json), [Results CSV](results.csv).',
     rawLinks ? `Raw run files: ${rawLinks}.` : 'No raw run files are recorded.',
-    '## Answers to the original questions',
+    '## Interpretation of benchmark findings',
     answers(manifest, performanceResults, findingRows, callbackRows),
   ].join('\n\n');
   return report + '\n';

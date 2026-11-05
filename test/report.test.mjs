@@ -271,7 +271,7 @@ test('manifest, per-run validation and partial errors exclude callback evidence'
   }
   const report = buildReport({ ...manifest, validation: { passed: false } }, ioTuple('read', [10, 20, 15, 30]));
   assert.match(section(report, 'Callback attribution'), /Auxiliary read.*Unanswered/);
-  assert.doesNotMatch(section(report, 'Answers to the original questions'), /5 ms.*100%/);
+  assert.doesNotMatch(section(report, 'Interpretation of benchmark findings'), /5 ms.*100%/);
 });
 
 test('zero native incremental IO leaves the attribution percentage unavailable', () => {
@@ -304,7 +304,7 @@ test('CPU iterations and scan rows scaling preserve the other workload dimension
 
 test('question answers use recorded evidence and leave missing load and scaling evidence unanswered', () => {
   const report = buildReport({ ...manifest, settings: { ...manifest.settings, suite: 'smoke' } }, ioTuple('read', [10, 20, 15, 30]));
-  const answers = section(report, 'Answers to the original questions');
+  const answers = section(report, 'Interpretation of benchmark findings');
   assert.match(answers, /CAP custom logic/);
   assert.match(answers, /Execution in Oyster/);
   assert.match(answers, /Net Oyster overhead/);
@@ -318,13 +318,13 @@ test('question answers use recorded evidence and leave missing load and scaling 
 test('load answers cite actual sweep values and distinguish missing generator evidence', () => {
   const results = [10, 20].map((load, i) => run('wasm-compute', 10 + i, 1, scenario({ ...computeWorkload, mode: 'wasm-compute' }),
     { load: { kind: 'arrival', value: load }, probe: { p95Ms: 2 + i }, resources: { clientCpuPercent: 50 } }));
-  const answers = section(buildReport(manifest, results), 'Answers to the original questions');
+  const answers = section(buildReport(manifest, results), 'Interpretation of benchmark findings');
   assert.match(answers, /load 10 to 20/);
   assert.match(answers, /Mean run p95 latency.*20 to 22/);
   assert.match(answers, /Client CPU is recorded/);
   assert.match(answers, /CPU isolation is unverified/);
   delete results[1].resources.clientCpuPercent;
-  assert.match(section(buildReport(manifest, results), 'Answers to the original questions'), /Generator saturation is unverified/);
+  assert.match(section(buildReport(manifest, results), 'Interpretation of benchmark findings'), /Generator saturation is unverified/);
 });
 
 test('expected callback counts and callback byte validation appear in display and CSV without changing matching', async () => {

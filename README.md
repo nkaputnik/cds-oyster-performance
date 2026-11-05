@@ -48,7 +48,7 @@ The terminal prints the path to reports/bench-<timestamp>/report.md. Open that f
 
 | File | Purpose |
 | --- | --- |
-| report.md | Charts first, named comparisons, and explicit answers to the six original questions |
+| report.md | Charts first, self-contained findings, comparison explanations, and the recorded benchmark setup |
 | details.md | Every comparison, repetition, validation result, resource metric, and failure |
 | results.csv / results.json | Machine-readable observations |
 | manifest.json | Actual dependency versions, data/source hashes, machine, settings and completion status |
