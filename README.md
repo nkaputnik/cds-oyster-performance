@@ -13,6 +13,8 @@ npm install
 npm run benchmark
 ~~~
 
+This repository is private, so Git must be authenticated to GitHub. If you already use the authenticated GitHub CLI, you can clone with gh repo clone nkaputnik/cds-oyster-performance instead.
+
 For the longer version:
 
 ~~~sh
