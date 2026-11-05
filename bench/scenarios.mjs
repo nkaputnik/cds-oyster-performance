@@ -4,6 +4,7 @@ export const MODES = ['cap-baseline', 'oyster-idle', 'native-empty', 'wasm-empty
 const OPERATIONS = ['create', 'update', 'read', 'action', 'scan'];
 export function callbackBudget(s) {
   if (!s.mode.startsWith('wasm-')) return 0;
+  if (s.lookupPattern) return s.lookupPattern === 'batch' ? 1 : s.rows;
   if (s.operation === 'scan') return Math.ceil(s.scanRows / s.pageSize);
   if (!s.mode.endsWith('-read') && !s.mode.endsWith('-write')) return 0;
   if (s.operation === 'read' && s.mode.endsWith('-write')) return 2 * s.callbacks;
@@ -13,7 +14,7 @@ export function callbackBudget(s) {
 export function scenario(input = {}) {
   const s = { mode: 'cap-baseline', operation: 'action', table: 'SmallRows', rows: 10,
     iterations: 100, callbacks: 1, access: 'service', hook: false, pageSize: 1000,
-    scanRows: 10000, enrichment: 'batch', queryShape: 'page', offset: 0, hookControl: false, actionContract: 'auto', expectedFailure: null, ...input };
+    scanRows: 10000, enrichment: 'batch', queryShape: 'page', offset: 0, hookControl: false, actionContract: 'auto', lookupPattern: null, expectedFailure: null, ...input };
   if (!MODES.includes(s.mode)) throw new Error('Unknown mode: ' + s.mode);
   if (!OPERATIONS.includes(s.operation)) throw new Error('Unknown operation: ' + s.operation);
   if (!['SmallRows', 'LargeRows', 'WriteRows'].includes(s.table)) throw new Error('Unknown table');
@@ -23,6 +24,9 @@ export function scenario(input = {}) {
   for (const key of ['rows', 'iterations', 'callbacks', 'pageSize', 'scanRows', 'offset'])
     if (!Number.isSafeInteger(s[key]) || s[key] < 0) throw new Error('Invalid ' + key);
   if (!s.pageSize || !s.rows) throw new Error('rows and pageSize must be positive');
+  if (s.lookupPattern && (!['individual', 'batch'].includes(s.lookupPattern) || s.operation !== 'action'
+    || !['native-compute-read', 'wasm-compute-read'].includes(s.mode) || s.hook || s.access !== 'service' || s.rows > 1000))
+    throw new Error('Invalid fixed lookup pattern');
   if (s.queryShape !== 'offset' && s.offset !== 0) throw new Error('Nonzero offset requires queryShape offset');
   if (s.operation === 'read' && s.queryShape === 'key') s.rows = 1;
   if (!['auto', 'compute'].includes(s.actionContract)) throw new Error('Unknown actionContract');
@@ -40,6 +44,7 @@ export function scenario(input = {}) {
   if (s.operation === 'read') s.id += '/query-' + s.queryShape + '-offset' + s.offset;
   if (s.hookControl) s.id += '/hook-control';
   if (s.actionContract !== 'auto') s.id += '/contract-' + s.actionContract;
+  if (s.lookupPattern) s.id += '/lookup-' + s.lookupPattern;
   return s;
 }
 
@@ -52,17 +57,20 @@ export function suite(name) {
   const core = [
     ...matrix(MODES, ['create', 'update', 'read', 'action']),
     ...matrix(MODES.slice(0, 4), ['read'], { table: 'LargeRows' }),
+    ...matrix(MODES.slice(0, 4), ['read'], { table: 'LargeRows', rows: 1000 }),
     ...matrix(MODES.slice(2), ['action'], { hook: true, actionContract: 'compute' }),
     ...[false, true].map(hook => scenario({ mode: 'oyster-idle', operation: 'action', hook, hookControl: true, actionContract: 'compute' })),
     ...[10, 1000].flatMap(rows => matrix(['native-compute', 'wasm-compute'], ['read'], { table: 'LargeRows', rows })),
     ...matrix(['native-compute', 'wasm-compute'], ['scan'], { scanRows: 10000 }),
     ...matrix(['native-compute-read', 'native-compute-write'], ['action'], { access: 'db' }),
+    ...matrix(['native-compute-read', 'wasm-compute-read', 'native-compute-write', 'wasm-compute-write'], ['action'], { callbacks: 10 }),
+    ...['individual', 'batch'].flatMap(lookupPattern => matrix(['native-compute-read', 'wasm-compute-read'], ['action'], { lookupPattern })),
     ...['cap-baseline', 'native-compute-read', 'wasm-compute-read'].flatMap(mode => [8, 32].map(value =>
       scenario({ mode, operation: 'action', benchmarkLoad: { kind: 'vus', value } }))),
   ];
   if (name === 'long') core.push(
+    ...matrix(['native-compute', 'wasm-compute'], ['action'], { iterations: 10000 }),
     ...matrix(['native-compute', 'wasm-compute'], ['scan'], { scanRows: 50000 }),
-    ...matrix(['native-compute-read', 'wasm-compute-read', 'native-compute-write', 'wasm-compute-write'], ['action'], { callbacks: 5 }),
     ...['cap-baseline', 'native-compute-read', 'wasm-compute-read'].flatMap(mode => [1, 8, 32].map(value =>
       scenario({ mode, operation: 'read', mixed: true, benchmarkLoad: { kind: 'vus', value } }))),
   );

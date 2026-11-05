@@ -1,9 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
-import { buildHumanReport } from './report-view.mjs';
+import { buildHumanReport, buildUseCaseCatalog, oysterHandler, oysterSources } from './report-view.mjs';
 
 const unavailable = 'unavailable';
-const workloadFields = ['operation', 'table', 'rows', 'iterations', 'callbacks', 'access', 'hook', 'pageSize', 'scanRows', 'enrichment', 'mixed', 'readTable', 'queryShape', 'offset', 'hookControl', 'actionContract', 'scanCoordination', 'wholeScanRows'];
+const workloadFields = ['operation', 'table', 'rows', 'iterations', 'callbacks', 'access', 'hook', 'pageSize', 'scanRows', 'enrichment', 'mixed', 'readTable', 'queryShape', 'offset', 'hookControl', 'actionContract', 'scanCoordination', 'wholeScanRows', 'lookupPattern'];
 const statFields = ['samples', 'successes', 'errors', 'droppedIterations', 'p50Ms', 'p95Ms', 'p99Ms', 'meanMs', 'successfulRps', 'offeredRps', 'completedRps', 'elapsedSeconds', 'sampleLimitReached'];
 const resourceFields = ['cpuPercent', 'rssPeakMiB', 'eventLoopP99Ms', 'gcCount', 'gcMs', 'clientCpuPercent'];
 const comparisons = [
@@ -31,6 +31,8 @@ function display(value) {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 function cell(value) {
+  if (value?.oysterSources) return value.oysterSources.length
+    ? value.oysterSources.map(s => oysterHandler(s, s.mode)).join(', ') : unavailable;
   const slash = String.fromCharCode(92);
   return display(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .split(slash).join(slash + slash).replace(/\|/g, () => slash + '|').replace(/[\r\n]+/g, ' / ')
@@ -44,6 +46,9 @@ function link(path, label = 'raw') {
   if (!path) return unavailable;
   const target = String(path).split('/').map(part => encodeURIComponent(part).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/');
   return `[${cell(label)}](${target})`;
+}
+function modeReference(s) {
+  return s?.mode?.startsWith('wasm-') ? { oysterSources: [s] } : s?.mode;
 }
 function runLabel(result) {
   return `${display(result.scenario?.id)} / rep ${display(result.repetition)}`;
@@ -130,7 +135,7 @@ function evidence(results, definitions, prefix) {
       const differences = matchedTuples.map(tuple => definition.difference(tuple.map(run => run.stats.meanMs)));
       const summary = summarize(differences.map(value => value.delta));
       rows.push({ question: definition.question, comparison: definition.comparison, workload: workload(group[0], definition.omit),
-        context: group[0],
+        context: group[0], oysterSources: matchedTuples[0].filter(r => r.scenario.mode.startsWith('wasm-')).map(r => r.scenario),
         ...summary, percent: summarize(differences.map(value => value.percent)).mean, id: `${prefix}${rows.length + 1}` });
     }
     if (!matched) rows.push({ question: definition.question, comparison: definition.comparison,
@@ -188,8 +193,29 @@ function directCallbackEvidence(results) {
   })), 'D');
 }
 function evidenceTable(rows, percentLabel = 'Mean paired delta (%)') {
-  return table(['Question', 'Comparison', 'Matched workload', 'Pairs', 'Mean delta (ms)', percentLabel, 'Delta SD (ms)', 'Evidence row'],
-    rows.map(row => [row.question, row.comparison, row.workload, row.n, row.mean, row.percent, row.sd, row.id]));
+  return table(['Question', 'Comparison', 'Matched workload', 'Pairs', 'Mean delta (ms)', percentLabel, 'Delta SD (ms)', 'Evidence row', 'Oyster handlers'],
+    rows.map(row => [row.question, row.comparison, row.workload, row.n, row.mean, row.percent, row.sd, row.id, { oysterSources: row.oysterSources || [] }]));
+}
+function fanoutEvidence(results) {
+  const rows = [];
+  const candidates = results.filter(r => lowLoad(r) && r.scenario.operation === 'action'
+    && r.scenario.access === 'service' && !r.scenario.hook);
+  for (const io of ['read', 'write']) for (const group of groups(candidates, { omit: ['callbacks'] })) {
+    const pairs = tuples(group, [
+      r => r.scenario.mode === 'native-compute-' + io && r.scenario.callbacks === 1,
+      r => r.scenario.mode === 'native-compute-' + io && r.scenario.callbacks === 10,
+      r => r.scenario.mode === 'wasm-compute-' + io && r.scenario.callbacks === 1,
+      r => r.scenario.mode === 'wasm-compute-' + io && r.scenario.callbacks === 10,
+    ]);
+    if (!pairs.length) continue;
+    const native = pairs.map(([one, ten]) => (ten.stats.meanMs - one.stats.meanMs) / 9);
+    const oyster = pairs.map(([, , one, ten]) => (ten.stats.meanMs - one.stats.meanMs) / 9);
+    rows.push({ io, context: group[0], n: pairs.length,
+      native: summarize(native), oyster: summarize(oyster),
+      overhead: summarize(oyster.map((cost, i) => cost - native[i])),
+      times: [0, 1, 2, 3].map(i => summarize(pairs.map(pair => pair[i].stats.meanMs)).mean) });
+  }
+  return rows;
 }
 
 function entries(value, prefix = '') {
@@ -246,12 +272,13 @@ function charts(results) {
     const modes = groups(comparable, { mode: true });
     const valid = modes.map(group => ({ group, stats: metric(group, 'meanMs') })).filter(item => finite(item.stats.mean));
     if (valid.length) output.push(chart('Per-operation mean latency', 'Run mean latency (ms)', valid.map(item => item.stats.mean),
-      valid.map(item => `${item.group[0].scenario?.mode}; ${workload(item.group[0])}; n=${item.stats.n}`)));
+      valid.map(item => `${item.group[0].scenario?.mode}; ${workload(item.group[0])}; n=${item.stats.n}`)),
+      '\n\n' + oysterSources(valid.map(item => item.group[0].scenario)));
   }
   for (const { sweep, name, axisTitle, area, valid, id } of sweepEvidence(results)) {
     const title = area === 'probe' ? 'Unrelated-request probe' : name === 'successfulRps' ? 'Successful throughput' : sweep.title;
     output.push(chart(`${title} (${id})`, axisTitle, valid.map(item => item.stats.mean),
-      valid.map(item => `${item.group[0].scenario?.mode}; ${workload(item.group[0])}; n=${item.stats.n}`), 'line'));
+      valid.map(item => `${item.group[0].scenario?.mode}; ${workload(item.group[0])}; n=${item.stats.n}`), 'line'), '\n\n' + oysterSources(valid.map(item => item.group[0].scenario)));
   }
   return output.length ? output.join('') : 'No eligible successful observations are available for charts.';
 }
@@ -371,23 +398,24 @@ export function buildDetailedReport(manifest = {}, results = []) {
   const performanceResults = manifestIssues.length ? [] : results;
   const findingRows = findingEvidence(performanceResults);
   const callbackRows = callbackEvidence(performanceResults);
+  const directCallbackRows = directCallbackEvidence(performanceResults);
   const allGroups = groups(results, { mode: true });
-  const latencyRows = results.map(result => [runLabel(result), result.scenario?.mode, workload(result),
+  const latencyRows = results.map(result => [runLabel(result), modeReference(result.scenario), workload(result),
     ...statFields.map(name => result.stats?.[name]), result.scenario?.expectedCallbacks, result.rawFile || unavailable]);
   const latency = table(['Run', 'Mode', 'Workload', 'Samples', 'Successes', 'Errors', 'Dropped starts', 'p50 (ms)', 'p95 (ms)', 'p99 (ms)', 'Mean (ms)',
     'Successful requests/s', 'Offered requests/s', 'Completed requests/s', 'Elapsed (s)', 'Sample cap reached', 'Expected callbacks', 'Raw file'], latencyRows);
-  const resourceRows = results.map(result => [runLabel(result), result.scenario?.mode, ...resourceFields.map(name => result.resources?.[name])]);
+  const resourceRows = results.map(result => [runLabel(result), modeReference(result.scenario), ...resourceFields.map(name => result.resources?.[name])]);
   const variabilityRows = allGroups.map(group => {
     const validGroup = manifestIssues.length ? [] : group;
     const mean = metric(validGroup, 'meanMs');
     const p95 = metric(validGroup, 'p95Ms');
     const rps = metric(validGroup, 'successfulRps');
-    return [group[0].scenario?.mode, workload(group[0]), mean.n, mean.mean, mean.sd, mean.min, mean.max,
+    return [modeReference(group[0].scenario), workload(group[0]), mean.n, mean.mean, mean.sd, mean.min, mean.max,
       p95.n, p95.mean, p95.sd, rps.n, rps.mean, rps.sd];
   });
   const failureRows = results.filter(result => result.phase === 'limit' || result.expectedFailure || result.error
     || result.stats?.successes === 0 || result.stats?.errors > 0 || result.stats?.droppedIterations > 0).map(result => [
-    runLabel(result), result.scenario?.mode, result.phase, result.expectedFailure, result.stats?.successes, result.stats?.errors, result.stats?.droppedIterations, result.error, result.rawFile]);
+    runLabel(result), modeReference(result.scenario), result.phase, result.expectedFailure, result.stats?.successes, result.stats?.errors, result.stats?.droppedIterations, result.error, result.rawFile]);
   const probeRows = results.flatMap(result => ['validation', 'probe'].filter(field => result[field] !== undefined)
     .flatMap(field => entries(result[field], field).map(([name, value]) => [runLabel(result), name, value])));
   const rawLinks = [...new Set(results.map(result => result.rawFile).filter(Boolean))].map(path => link(path, path)).join(', ');
@@ -401,6 +429,9 @@ export function buildDetailedReport(manifest = {}, results = []) {
     '## Callback attribution',
     evidenceTable(callbackRows, 'Mean percentage of native incremental IO (%)'),
     'Within each independent repetition, auxiliary read/write attribution is (WASM computation plus IO minus WASM computation) minus (native computation plus IO minus native computation). All four eligible modes must match every workload dimension, transport, phase and load exactly. The nominal callback loop count stays fixed; expectedCallbacks records actual callback expectations and can differ between computation and IO modes. Percentages are the mean of repetition-level deltas divided by the native incremental IO cost in the same repetition; a zero denominator is unavailable. This is an empirical path comparison, including query construction, validation, serialization, service/DB execution and their interactions. It does not establish an isolated additive callback cost.',
+    '## Callback attribution against direct database queries',
+    evidenceTable(directCallbackRows, 'Mean percentage of native direct-query increment (%)'),
+    'This comparison subtracts calculation-only time on each path, then compares Oyster service-scoped CQL with native direct database CQL. All four observations must belong to the same independent repetition and match the remaining workload fields. The supporting attribution is retained in this detailed report.',
     '## Per-run latency and throughput',
     results.length ? latency : 'No measured runs.',
     'Every workload dimension appears in the table. The static endpoint protocol records warmed measurements. Historical cold timings and limit probes, when present, remain separate; a fresh server process does not establish a cold operating-system cache. Unavailable metrics are never replaced with zero. Display values round to three decimals, retaining three significant digits for smaller nonzero values; JSON and CSV preserve the recorded precision.',
@@ -410,7 +441,7 @@ export function buildDetailedReport(manifest = {}, results = []) {
     'Each n counts eligible independent repetitions for that metric. Missing metrics reduce n. Duplicate repetition IDs within a mode and workload are excluded from variability and charts. Run percentiles are summarized across repetitions and are never pooled into a request-level percentile or treated as independent experiments.',
     '## Per-run resources',
     results.some(result => finite(result.wholeScanElapsedSeconds)) ? table(['Whole scan run', 'Mode', 'Whole rows', 'Bounded invocations', 'Whole elapsed (s)'],
-      results.filter(result => finite(result.wholeScanElapsedSeconds)).map(result => [runLabel(result), result.scenario?.mode, result.scenario?.wholeScanRows, result.stats?.samples, result.wholeScanElapsedSeconds])) : '',
+      results.filter(result => finite(result.wholeScanElapsedSeconds)).map(result => [runLabel(result), modeReference(result.scenario), result.scenario?.wholeScanRows, result.stats?.samples, result.wholeScanElapsedSeconds])) : '',
     table(['Run', 'Mode', 'Server CPU (%)', 'Peak RSS (MiB)', 'Event-loop p99 (ms)', 'GC count', 'GC time (ms)', 'Client CPU (%)'], resourceRows),
     'Client CPU is necessary to assess generator saturation. Unavailable client CPU or missing scheduled-arrival sweeps leave the capacity question unanswered. SQLite write serialization and client/server competition on the same host can affect results.',
     '## Measured charts',
@@ -437,11 +468,11 @@ export function buildDetailedReport(manifest = {}, results = []) {
     '## Interpretation of benchmark findings',
     answers(manifest, performanceResults, findingRows, callbackRows),
   ].join('\n\n');
-  return report + '\n';
+  return report + '\n\n' + buildUseCaseCatalog(manifest, results, { groups, tuples, lowLoad, summarize, validationIssues }) + '\n';
 }
 
 export function buildReport(manifest = {}, results = []) {
-  return buildHumanReport(manifest, results, { groups, metric, eligible, lowLoad, findingEvidence, callbackEvidence, directCallbackEvidence, sweepEvidence, validationIssues, summarize });
+  return buildHumanReport(manifest, results, { groups, tuples, eligible, lowLoad, fanoutEvidence, validationIssues, summarize });
 }
 export const renderReport = buildReport;
 

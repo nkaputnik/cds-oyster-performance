@@ -13,6 +13,17 @@ const fixture = { tables: {
 const base = { mode: 'cap-baseline', operation: 'action', table: 'SmallRows', rows: 2,
   iterations: 100, callbacks: 1, hook: false, scanRows: 1000, pageSize: 80 };
 
+test('individual and batch lookup actions use identical distinct rotating keys and payloads', () => {
+  const s = { ...base, mode: 'wasm-compute-read', lookupPattern: 'individual', rows: 3 };
+  const a = api.requestFor(s, fixture), b = api.requestFor({ ...s, lookupPattern: 'batch' }, fixture);
+  assert.equal(a.path, '/benchmark/oysterLookupIndividual');
+  assert.equal(b.path, '/benchmark/oysterLookupBatch');
+  assert.deepEqual(a.body, b.body);
+  assert.deepEqual(a.body.lookupIDs, [101, 203, 307]);
+  assert.deepEqual(api.requestFor(s, fixture, { iteration: 1 }).body.lookupIDs, [203, 307, 101]);
+  assert.throws(() => api.requestFor({ ...s, rows: 4 }, fixture), /lookup|keys/i);
+});
+
 test('writes use disjoint generated keys and enforce their integer allocation bounds', () => {
   assert.equal(typeof api.requestFor, 'function');
   const create = { ...base, operation: 'create', table: 'WriteRows' };

@@ -4,7 +4,7 @@ Compare plain CAP, native JavaScript handlers, and Oyster WASM handlers locally 
 
 ## Install and run
 
-Use Node.js 22.18 or newer and npm on macOS or Linux. Run one benchmark at a time, with port 4006 free. Keep the machine plugged in and close other CPU-intensive applications.
+Use Node.js 22.18 or newer and npm on macOS or Linux. On Windows, run these commands inside WSL with Node.js and npm installed in that Linux environment. Run one benchmark at a time, with port 4006 free. Keep the machine plugged in and close other CPU-intensive applications.
 
 ~~~sh
 git clone https://github.com/nkaputnik/cds-oyster-performance.git
@@ -12,8 +12,6 @@ cd cds-oyster-performance
 npm install
 npm run benchmark
 ~~~
-
-This repository is private, so Git must be authenticated to GitHub. If you already use the authenticated GitHub CLI, you can clone with gh repo clone nkaputnik/cds-oyster-performance instead.
 
 For the longer version:
 
@@ -27,47 +25,39 @@ No global CDS CLI, separate server startup, database download, or data generatio
 
 | | Short: npm run benchmark | Long: npm run benchmark:long |
 | --- | --- | --- |
-| Time budget | 15 minutes | 90 minutes |
+| Target duration | Under 15 minutes | Up to 90 minutes |
 | Independent repetitions | 1 | 3 |
 | Warmup / measurement per case | 2 / 4 seconds | 3 / 10 seconds |
-| Ordinary measured runs | 68 | 249 |
+| Ordinary measured runs | 80 | 279 |
 | CRUD and custom actions | All baseline, empty, calculation, CQL read/write comparisons | Same, repeated |
 | READ tables | 1,000 rows and 1,000,000 rows | Same |
 | Large-result processing | Return and calculate over 10 / 1,000 rows; scan 10,000 rows | Also scan 50,000 rows and process the complete million-row table |
 | Declared extension points | Empty, calculation, CQL read/write; unused routing control | Same, repeated |
 | Concurrent load | 1, 8 and 32 clients on representative actions | Also mixed READ / INSERT / UPDATE / action traffic |
-| CQL fan-out | One auxiliary query | Also five auxiliary queries |
+| CQL fan-out | 1 versus 10 sequential reads and updates | Same, repeated |
+| Equivalent enrichment | Ten individual indexed lookups versus one batched query for the same ten keys | Same, repeated |
 
-The runner starts **two CAP processes for short and six for long**, one per app and independent repetition. Each process serves all of its fixed endpoint cases. The measurement windows total about seven minutes for short and 54 minutes for long, with deployment, verification, HTTP worker startup and report writing added. Long also includes whole-table processing. The runner enforces the 15- and 90-minute budgets; slower machines may produce a partial report.
+The runner starts **two CAP processes for short and six for long**, one per app and independent repetition. Each process serves all of its fixed endpoint cases. The measurement windows total eight minutes for short and about 61 minutes for long, with deployment, verification, HTTP worker startup and report writing added. Long also includes whole-table processing. These durations are targets, not enforced limits. The runner completes all planned cases and whole-table scans even if the machine needs more time. CPU speed, available resources and WSL filesystem performance can affect total duration.
 
-A complete short run with this static endpoint setup on 2026-11-05 finished in **about 7½ minutes**, with two CAP starts, all 68 cases validated, 580,741 successful measured requests and zero failures. Long has not yet been timed as a complete campaign. Hardware and installed dependency versions can change the duration.
+The complete short test run on 2026-11-05 finished in **about 8¾ minutes**, with two CAP starts, all 80 cases validated, 635,104 successful measured requests and zero failures. Its recorded duration was 523 seconds, with initial CSV deployment preceding that interval. Long has not yet been timed as a complete test run. Hardware and installed dependency versions can change the duration.
 
 ## Review the result
 
-The terminal prints the path to reports/bench-<timestamp>/report.md. Open that file in GitHub or a Markdown preview that supports Mermaid charts. Each invocation produces a new directory.
+The terminal prints the path to `reports/bench-<timestamp>/report.md`. Open it in a Markdown preview with Mermaid support. Each test run creates a new directory. To view the report on GitHub, upload the result directory separately.
 
 | File | Purpose |
 | --- | --- |
-| report.md | Charts first, self-contained findings, comparison explanations, and the recorded benchmark setup |
-| details.md | Every comparison, repetition, validation result, resource metric, and failure |
-| results.csv / results.json | Machine-readable observations |
-| manifest.json | Actual dependency versions, data/source hashes, machine, settings and completion status |
-| raw/ and logs/ | Successful response timings, generator output and CAP logs |
+| `report.md` | Application-level impact, comparison charts, measured overhead and interpretation limits |
+| `details.md` | Charts for every use case, repetitions, validation, resource metrics and failures |
+| `results.csv` / `results.json` | Machine-readable observations |
+| `manifest.json` | Installed versions, data/source hashes, machine, settings and completion status |
+| `raw/` and `logs/` | Successful response timings, load-generator output and CAP logs |
 
-Positive overhead means Oyster took longer. Calculation-only handlers issue no auxiliary CQL; CRUD still performs its primary database operation. CQL variants do the same calculation plus a lookup or update in an auxiliary table. READ calculations run over returned rows; scans fetch and process pages in one action.
+Start with `report.md` for the measured cost of adding Oyster to predefined extension points, custom-entity CRUD handlers and after-READ processing. It compares matched native and Oyster workloads using added milliseconds and latency ratios. Positive overhead means Oyster took longer. Any application-wide estimate states its assumed traffic mix. It does not represent a measured business application.
 
-The report answers:
+Charts use blue for native handlers, orange for Oyster handlers and gray for no-handler controls. Lower latency and higher throughput indicate better performance. Oyster references link to the handler implementation. Use `details.md` to inspect individual workloads, callback-cost calculations and supporting measurements.
 
-1. What custom calculation and CQL add to plain CAP CRUD and actions.
-2. What changes when equivalent logic executes in Oyster instead of native JavaScript.
-3. The overhead of an idle Oyster plugin and an empty Oyster handler.
-4. The additional CQL callback cost compared with native service queries and direct database queries.
-5. How returned-row and paged-loop processing behave as the result size grows.
-6. How response latency, throughput, failures, and an unrelated lightweight request behave under concurrent load.
-
-Callback cost uses calculation-only controls on both paths. It is an empirical difference between complete execution paths, including query handling and data transfer. It is not a measurement of one isolated internal component.
-
-Only validated, matching runs support overhead comparisons. Failed requests remain visible and are excluded from successful latency. Short has one repetition and cannot establish repeat variability. Load uses concurrent HTTP clients with one request in flight per client; it does not establish scheduled-arrival capacity. Client and server share this machine, and SQLite serializes writes.
+Calculation-only handlers perform synthetic arithmetic without auxiliary CQL. CRUD still performs its primary database operation. CQL variants add database queries. READ calculations process returned rows, while scan actions fetch and process pages. Only validated, matching runs support overhead comparisons. Short has one repetition and cannot establish repeat variability. Concurrent clients send one request at a time. Client and server share the machine, and SQLite serializes writes. These results do not establish production capacity.
 
 Regenerate Markdown from existing evidence without running measurements:
 
@@ -108,7 +98,7 @@ Each test has a fixed endpoint. These projections expose the same underlying tab
 | Native calculation plus CQL update | /benchmark/NativeCqlWriteWriteRows | srv/benchmark-service.js |
 | Oyster calculation plus CQL update | /benchmark/OysterCqlWriteWriteRows | srv/BenchmarkService/OysterCqlWriteWriteRows/ |
 
-The same prefixes expose SmallRows and LargeRows for READ. Actions have fixed names such as nativeCalculation, oysterCalculation, nativeScan and oysterScan. Declared extension actions delegate to BenchmarkExtensionService. All Oyster handler files are stored in Git and loaded at startup. The runner chooses a URL; it does not rewrite application code or generate handlers.
+The same prefixes expose SmallRows and LargeRows for READ. Actions have fixed names such as nativeCalculation, oysterCalculation, nativeScan and oysterScan. Lookup patterns use nativeLookupIndividual, nativeLookupBatch, oysterLookupIndividual and oysterLookupBatch. Declared extension actions delegate to BenchmarkExtensionService. All Oyster handler files are stored in Git and loaded at startup. The runner chooses a URL; it does not rewrite application code or generate handlers.
 
 UPDATE requests cycle through the 1,000 seeded WriteRows. Concurrent clients use separate row partitions. INSERT requests allocate distinct keys per case, client and iteration; warmup, measurement and correctness checks use separate ranges. Lookup keys and action/write auxiliary keys rotate too. This lets multiple cases share a database deployment. READ handlers with auxiliary writes select and update the first SideEffectRows row on both paths, so that comparison includes one SELECT and one UPDATE.
 
@@ -132,6 +122,6 @@ npm run verify
 
 npm test checks the runner, reporting, requests, and real native/Oyster persistence and rollback. npm run verify checks the short protocol's handler activation, checksums and side effects without load measurement. Verification also deploys the database and needs port 4006 free.
 
-Press Ctrl-C once to stop a benchmark. The runner stops its CAP and load-generator processes, and saves completed observations. An interrupted, budget-limited, or failed run exits with a nonzero status. Its report is partial and must not be treated as a complete result. Startup logs identify port conflicts or incompatible dependencies; configuration is not silently changed to bypass them.
+Press Ctrl-C once to stop a benchmark. The runner stops its CAP and load-generator processes, and saves completed observations. An interrupted or failed run exits with a nonzero status. Its report is partial and must not be treated as a complete result. Startup logs identify port conflicts or incompatible dependencies; configuration is not silently changed to bypass them.
 
 Reports, SQLite files, dependencies, and logs are ignored by Git. Share the complete result directory when someone needs to inspect the evidence behind a report.

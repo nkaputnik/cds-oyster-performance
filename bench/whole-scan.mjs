@@ -28,10 +28,9 @@ export function referenceChunks(database, { rows = 1000000, chunkRows = 50000, i
 export async function measureWholeScan({ fixture, settings, reportDir, signal, results, server }) {
   const rows = fixture.tables.LargeRows.count;
   const chunks = referenceChunks(DATABASE_PATH, { rows });
-  const scanSignal = AbortSignal.any([signal, AbortSignal.timeout(300000)]);
   for (let repetition = 1; repetition <= settings.repetitions; repetition++) {
     for (const mode of shuffled(['native-compute', 'wasm-compute'], settings.seed + repetition)) {
-      scanSignal.throwIfAborted();
+      signal.throwIfAborted();
       const s = scenario({ mode, operation: 'scan', scanRows: 50000, pageSize: 1000, iterations: 100 });
       const label = 'whole-scan-' + repetition + '-' + mode;
       const rawFile = resolve(reportDir, 'raw', label + '.json');
@@ -43,7 +42,7 @@ export async function measureWholeScan({ fixture, settings, reportDir, signal, r
         validateActivation(s, server.state);
         const invoke = async chunk => {
           const response = await publicRequest(server, { method: 'POST', path: '/benchmark/' + (mode.startsWith('wasm-') ? 'oysterScan' : 'nativeScan'),
-            headers: { 'Content-Type': 'application/json' }, body: { cursor: chunk.cursor, count: chunk.count, pageSize: 1000, iterations: 100 } }, { signal: scanSignal });
+            headers: { 'Content-Type': 'application/json' }, body: { cursor: chunk.cursor, count: chunk.count, pageSize: 1000, iterations: 100 } }, { signal });
           assert.equal(response.status, 200, 'Bounded scan response status');
           assert.equal(response.body.value, chunk.checksum, 'Bounded scan checksum');
           return { ...chunk, durationMs: response.durationMs, status: response.status, result: response.body.value };

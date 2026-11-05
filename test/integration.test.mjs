@@ -115,7 +115,7 @@ test('fixed CAP and WASM endpoints share each server and preserve persistence, c
       const server = await startServer({ root: plain ? resolve(APP_ROOT, 'apps/cap') : APP_ROOT }, resolve(logs, plain ? 'cap' : 'oyster'), { diagnostics: true });
       const pid = server.child.pid;
       try {
-        if (!plain) assert.equal(server.state.annotations.length, 25);
+        if (!plain) assert.equal(server.state.annotations.length, 27);
         const modes = plain ? ['cap-baseline'] : ['oyster-idle', 'native-empty', 'wasm-empty', 'native-compute', 'wasm-compute', 'native-compute-read', 'wasm-compute-read', 'native-compute-write', 'wasm-compute-write'];
         for (const mode of modes) for (const operation of ['action', 'create', 'update', 'read']) {
           const s = scenario({ mode, operation });
@@ -136,6 +136,19 @@ test('fixed CAP and WASM endpoints share each server and preserve persistence, c
             await verifyScenario(server, scenario({ mode, operation: 'scan' }), frozen, { diagnostics: true, rollback: false });
           for (const mode of ['native-compute-read', 'native-compute-write'])
             await verifyScenario(server, scenario({ mode, access: 'db' }), frozen, { diagnostics: true, rollback: false });
+          for (const mode of ['native-compute-read', 'wasm-compute-read', 'native-compute-write', 'wasm-compute-write'])
+            await verifyScenario(server, scenario({ mode, callbacks: 10 }), frozen, { diagnostics: true, rollback: false });
+          for (const mode of ['native-compute-read', 'wasm-compute-read']) {
+            const checksums = [];
+            for (const lookupPattern of ['individual', 'batch']) {
+              const check = await verifyScenario(server, scenario({ mode, lookupPattern }), frozen, { diagnostics: true, rollback: false });
+              checksums.push(check.checksum);
+              assert.equal(check.queries.filter(q => q.query?.SELECT).length, lookupPattern === 'batch' ? 1 : 10);
+            }
+            assert.equal(checksums[0], checksums[1], 'batching must preserve the business result');
+          }
+          for (const mode of ['oyster-idle', 'native-empty', 'wasm-empty'])
+            await verifyScenario(server, scenario({ mode, operation: 'read', table: 'LargeRows', rows: 1000 }), frozen, { diagnostics: true, rollback: false });
           for (const hook of [false, true])
             await verifyScenario(server, scenario({ mode: 'oyster-idle', hook, hookControl: true }), frozen, { diagnostics: true, rollback: false });
           // Measures real HTTP traffic through the stdin worker without changing app source.

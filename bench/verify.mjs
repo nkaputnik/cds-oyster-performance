@@ -69,7 +69,9 @@ export function validateResponse(s, fixture, request, response, { scanChecksum, 
   assert.equal(response.status, request.expectedStatus, 'Unexpected public response status: ' + JSON.stringify(response.body));
   const validation = { passed: true, status: response.status };
   if (s.operation === 'action' && !endpoint(s).noop) {
-    const expected = expectedWork(s, fixture, request.body.seed, request.body.lookupID, request.body);
+    const expected = s.lookupPattern ? request.body.lookupIDs.reduce((value, ID) =>
+      (value + keyValue(fixture, 'LookupRows', ID)) & 2147483647, cpu(request.body.seed, request.body.iterations))
+      : expectedWork(s, fixture, request.body.seed, request.body.lookupID, request.body);
     assert.equal(scalar(response.body), expected, 'Action checksum');
     validation.checksum = expected;
   }

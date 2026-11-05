@@ -95,7 +95,7 @@ test('distinct dimensions and phases cannot collapse into a comparison', () => {
   const report = buildReport(manifest, results);
   const finding = section(report, 'Findings').split('\n').find(line => line.startsWith('| Execution-location penalty for CPU work |'));
   assert.match(finding, /unanswered/i);
-  const groups = section(report, 'Independent repetition variability').split('\n').filter(line => line.startsWith('| wasm-compute |'));
+  const groups = section(report, 'Independent repetition variability').split('\n').filter(line => line.startsWith('| [wasm-compute](') || line.startsWith('| [wasm-compute: '));
   assert.equal(groups.length, 10);
 });
 
@@ -189,7 +189,7 @@ test('scan, enrichment and mixed workload dimensions remain distinct', () => {
   const report = buildReport(manifest, results);
   const finding = section(report, 'Findings').split('\n').find(line => line.startsWith('| Execution-location penalty for CPU work |'));
   assert.match(finding, /unanswered/i);
-  assert.equal(section(report, 'Independent repetition variability').split('\n').filter(line => line.startsWith('| wasm-compute |')).length, 5);
+  assert.equal(section(report, 'Independent repetition variability').split('\n').filter(line => line.startsWith('| [wasm-compute](') || line.startsWith('| [wasm-compute: ')).length, 5);
   for (const field of ['pageSize', 'scanRows', 'enrichment', 'mixed', 'readTable']) assert.ok(report.includes(field + '='));
 });
 

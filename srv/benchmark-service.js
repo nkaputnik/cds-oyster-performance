@@ -51,6 +51,23 @@ export default class BenchmarkService extends cds.ApplicationService {
     this.on('nativeCqlWrite', req => executeWork(req.data, writeIO));
     this.on('nativeDirectRead', req => executeWork(req.data, nativeIO(this, 'read', 'db')));
     this.on('nativeDirectWrite', req => executeWork(req.data, nativeIO(this, 'write', 'db')));
+    this.on('nativeLookupIndividual', async req => {
+      let value = cpu(req.data.seed, req.data.iterations);
+      for (const ID of req.data.lookupIDs) {
+        const row = await this.run(cds.ql.SELECT.one.from(this.entities.LookupRows).columns('ID', 'value').where({ ID }));
+        if (!row) req.reject(400, 'Lookup row missing');
+        value = (value + row.value) & 2147483647;
+      }
+      return value;
+    });
+    this.on('nativeLookupBatch', async req => {
+      const rows = await this.run(cds.ql.SELECT.from(this.entities.LookupRows).columns('ID', 'value')
+        .where`ID in ${req.data.lookupIDs}`.orderBy('ID'));
+      if (rows.length !== req.data.lookupIDs.length) req.reject(400, 'Lookup row missing');
+      let value = cpu(req.data.seed, req.data.iterations);
+      for (const row of rows) value = (value + row.value) & 2147483647;
+      return value;
+    });
     for (const prefix of ['native', 'oyster']) for (const kind of ['Empty', 'Calculation', 'CqlRead', 'CqlWrite']) {
       this.on(prefix + kind + 'Extension', async req => {
         const extension = await cds.connect.to('BenchmarkExtensionService');

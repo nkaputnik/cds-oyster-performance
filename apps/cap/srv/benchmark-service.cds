@@ -68,6 +68,12 @@ service BenchmarkService {
   action nativeCqlWrite(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;
   action nativeDirectRead(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;
   action nativeDirectWrite(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;
+  action nativeLookupIndividual(seed: Integer, iterations: Integer, lookupIDs: many Integer) returns Integer;
+  action nativeLookupBatch(seed: Integer, iterations: Integer, lookupIDs: many Integer) returns Integer;
+  @extensible.code
+  action oysterLookupIndividual(seed: Integer, iterations: Integer, lookupIDs: many Integer) returns Integer;
+  @extensible.code
+  action oysterLookupBatch(seed: Integer, iterations: Integer, lookupIDs: many Integer) returns Integer;
   @extensible.code
   action oysterCalculation(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;
   @extensible.code

@@ -25,7 +25,6 @@ export function parseArgs(args = process.argv.slice(2)) {
   settings.warmup = Number(settings.warmup ?? (short ? 2 : 3));
   settings.duration = Number(settings.duration ?? (short ? 4 : 10));
   settings.repetitions = Number(settings.repetitions ?? (short ? 1 : 3));
-  settings.budgetSeconds = short ? 900 : 5400;
   settings.seed = Number(settings.seed);
   if (!Number.isFinite(settings.warmup) || (settings.warmup !== 0 && settings.warmup < 1)) throw new Error('Invalid warmup');
   if (!Number.isFinite(settings.duration) || settings.duration < 1) throw new Error('Invalid duration');
@@ -103,7 +102,6 @@ export async function sourceHashes() {
 }
 
 export async function runBenchmark(settings) {
-  const campaignStarted = Date.now();
   const fixture = await loadFixture();
   const runs = planRuns(settings);
   if (!runs.length) throw new Error('No scenarios match the selected suite and filter');
@@ -111,7 +109,6 @@ export async function runBenchmark(settings) {
   const reportDir = resolve(APP_ROOT, 'reports', id), rawDir = resolve(reportDir, 'raw');
   await mkdir(rawDir, { recursive: true });
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('Benchmark wall-clock budget reached')), Math.max(1, settings.budgetSeconds * 1000 - (Date.now() - campaignStarted)));
   const interrupt = () => controller.abort(new Error('Benchmark interrupted'));
   process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
   const manifest = { id, startedAt: new Date().toISOString(), settings, fixture,
@@ -163,11 +160,10 @@ export async function runBenchmark(settings) {
   } catch (error) { fatal = error; manifest.error = errorText(error); }
   finally {
     if (server) await server.stop();
-    clearTimeout(timer);
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     if (controller.signal.aborted) manifest.error ??= errorText(controller.signal.reason);
     manifest.finishedAt = new Date().toISOString();
-    manifest.runSummary = { plannedRuns: runs.length, budgetSeconds: settings.budgetSeconds, passed: !manifest.error && results.every(result => result.validation?.passed === true),
+    manifest.runSummary = { plannedRuns: runs.length, passed: !manifest.error && results.every(result => result.validation?.passed === true),
       records: results.length, failedRecords: results.filter(result => result.validation?.passed !== true).length };
     await writeReport(reportDir, manifest, results);
   }

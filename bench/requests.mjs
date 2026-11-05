@@ -59,6 +59,12 @@ export function requestFor(scenario, fixture, { vu = 1, iteration = 0, clients =
   if (scenario.operation === 'scan')
     return request('POST', '/' + route.action, { cursor: fixture.tables.LargeRows.minID - 1, count: scenario.scanRows, pageSize: scenario.pageSize, iterations: scenario.iterations });
   if (scenario.operation === 'action') {
+    if (scenario.lookupPattern) {
+      const ids = fixture.tables.LookupRows.ids;
+      if (scenario.rows > ids.length) throw new Error('Insufficient lookup keys');
+      const lookupIDs = Array.from({ length: scenario.rows }, (_, i) => ids[(vu - 1 + iteration + i) % ids.length]);
+      return request('POST', '/' + route.action, { seed: 7, iterations: scenario.iterations, lookupIDs });
+    }
     if (route.noop) return request('POST', '/' + route.action, {}, 204);
     return request('POST', '/' + route.action, { seed: 7, iterations: scenario.iterations, calls: scenario.callbacks, ...auxiliaryKeys() });
   }
@@ -77,6 +83,7 @@ export function endpoint(s) {
   const variant = prefix[0].toLowerCase() + prefix.slice(1);
   if (s.operation === 'scan') return { action: s.mode.startsWith('wasm-') ? 'oysterScan' : 'nativeScan' };
   if (s.operation !== 'action') return { entity: prefix + s.table };
+  if (s.lookupPattern) return { action: (s.mode.startsWith('wasm-') ? 'oyster' : 'native') + 'Lookup' + (s.lookupPattern === 'batch' ? 'Batch' : 'Individual') };
   if (s.hookControl) return { action: s.hook ? 'extensionUnimplemented' : 'extensionBypass' };
   if (s.hook) return { action: variant + 'Extension' };
   if (s.access === 'db') return { action: s.mode.endsWith('-read') ? 'nativeDirectRead' : 'nativeDirectWrite' };

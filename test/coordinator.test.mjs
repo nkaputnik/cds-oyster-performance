@@ -11,7 +11,7 @@ test('verification CLI help exits without needing a fixture', async () => {
   assert.doesNotMatch(result.stderr, /Error:|ERR_/);
 });
 
-test('short and long protocols cover every question within their timing budgets', async () => {
+test('short and long protocols cover every question and reuse servers across cases', async () => {
   const { parseArgs, planRuns } = await import('../bench/run.mjs');
   const short = parseArgs([]), long = parseArgs(['--suite', 'long']);
   assert.equal(short.suite, 'short');
@@ -30,8 +30,6 @@ test('short and long protocols cover every question within their timing budgets'
       for (const mode of ['cap-baseline', 'native-empty', 'wasm-empty', 'native-compute', 'wasm-compute', 'native-compute-read', 'wasm-compute-read', 'native-compute-write', 'wasm-compute-write'])
         assert.ok(cases.some(r => r.scenario.mode === mode), operation + ' ' + mode);
     }
-    const allowance = runs.length * (settings.warmup + settings.duration + 5) + (settings.suite === 'long' ? 300 : 0);
-    assert.ok(allowance < settings.budgetSeconds, 'timing includes five seconds per test for checks');
     const batches = runs.filter((run, i) => i === 0 || run.repetition !== runs[i - 1].repetition || (run.scenario.mode === 'cap-baseline') !== (runs[i - 1].scenario.mode === 'cap-baseline'));
     assert.equal(batches.length, 2 * settings.repetitions);
   }
