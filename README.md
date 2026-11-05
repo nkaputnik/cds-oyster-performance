@@ -39,11 +39,11 @@ No global CDS CLI, separate server startup, database download, or data generatio
 
 The runner starts **two CAP processes for short and six for long**, one per app and independent repetition. Each process serves all of its fixed endpoint cases. The measurement windows total eight minutes for short and about 61 minutes for long, with deployment, verification, HTTP worker startup and report writing added. Long also includes whole-table processing. These durations are targets, not enforced limits. The runner completes all planned cases and whole-table scans even if the machine needs more time. CPU speed, available resources and WSL filesystem performance can affect total duration.
 
-The complete short test run on 2026-11-05 finished in **about 8¾ minutes**, with two CAP starts, all 80 cases validated, 635,104 successful measured requests and zero failures. Its recorded duration was 523 seconds, with initial CSV deployment preceding that interval. Long has not yet been timed as a complete test run. Hardware and installed dependency versions can change the duration.
+The complete short test run on 2026-11-05 finished in **about 8¾ minutes**, with two CAP starts, all 80 cases validated, 635,104 successful measured requests and zero failures. Its recorded duration was 523 seconds, with initial CSV deployment preceding that interval. The long run on the same host recorded about 64 minutes, with all planned cases attempted and 16 missing HTTP measurement summaries. Hardware and installed dependency versions can change the duration.
 
 ## Review the result
 
-A completed [sample short-run report](examples/short-run/report.md) is included as a reference for the analysis and charts.
+Reference reports show the analysis and charts from a [short run](examples/short-run/report.md) and a [long run](examples/long-run/report.md). The long run completed with 16 missing HTTP measurement summaries, which its report identifies and excludes from comparisons.
 
 The terminal prints the path to `reports/bench-<timestamp>/report.md`. Open it in a Markdown preview with Mermaid support. Each test run creates a new directory. To view the report on GitHub, upload the result directory separately.
 
