@@ -43,6 +43,8 @@ The complete short test run on 2026-11-05 finished in **about 8¾ minutes**, wit
 
 ## Review the result
 
+A completed [sample short-run report](examples/short-run/report.md) is included as a reference for the analysis and charts.
+
 The terminal prints the path to `reports/bench-<timestamp>/report.md`. Open it in a Markdown preview with Mermaid support. Each test run creates a new directory. To view the report on GitHub, upload the result directory separately.
 
 | File | Purpose |
