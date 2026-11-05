@@ -3,8 +3,6 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DATABASE_PATH } from './fixture.mjs';
-import { prepareRuntime, cleanupRuntime } from './prepare.mjs';
-import { startServer } from './process.mjs';
 import { scenario, shuffled } from './scenarios.mjs';
 import { cpu } from '../lib/workload.mjs';
 import { publicRequest, validateActivation } from './verify.mjs';
@@ -27,7 +25,7 @@ export function referenceChunks(database, { rows = 1000000, chunkRows = 50000, i
   } finally { db.close(); }
 }
 
-export async function measureWholeScan({ fixture, settings, reportDir, signal, results }) {
+export async function measureWholeScan({ fixture, settings, reportDir, signal, results, server }) {
   const rows = fixture.tables.LargeRows.count;
   const chunks = referenceChunks(DATABASE_PATH, { rows });
   const scanSignal = AbortSignal.any([signal, AbortSignal.timeout(300000)]);
@@ -40,15 +38,12 @@ export async function measureWholeScan({ fixture, settings, reportDir, signal, r
       const result = { scenario: { ...s, scanCoordination: 'external', wholeScanRows: rows }, repetition,
         transport: 'http', phase: 'warm', load: { kind: 'vus', value: 1 }, rawFile };
       results.push(result);
-      let server;
       try {
-        const runtime = await prepareRuntime(s, fixture, { signal: scanSignal });
-        server = await startServer(runtime, resolve(reportDir, 'logs', label), { signal: scanSignal });
         result.activeState = server.state;
-        validateActivation(s, server.state, runtime.expectedHandlers);
+        validateActivation(s, server.state);
         const invoke = async chunk => {
-          const response = await publicRequest(server, { method: 'POST', path: '/benchmark/scan',
-            headers: { 'Content-Type': 'application/json' }, body: { cursor: chunk.cursor, count: chunk.count, pageSize: 1000 } }, { signal: scanSignal });
+          const response = await publicRequest(server, { method: 'POST', path: '/benchmark/' + (mode.startsWith('wasm-') ? 'oysterScan' : 'nativeScan'),
+            headers: { 'Content-Type': 'application/json' }, body: { cursor: chunk.cursor, count: chunk.count, pageSize: 1000, iterations: 100 } }, { signal: scanSignal });
           assert.equal(response.status, 200, 'Bounded scan response status');
           assert.equal(response.body.value, chunk.checksum, 'Bounded scan checksum');
           return { ...chunk, durationMs: response.durationMs, status: response.status, result: response.body.value };
@@ -69,8 +64,6 @@ export async function measureWholeScan({ fixture, settings, reportDir, signal, r
         console.log(mode + ': whole table in ' + result.wholeScanElapsedSeconds.toFixed(3) + ' s');
       } catch (error) { result.error = error.message; result.validation = { passed: false }; }
       finally {
-        if (server) await server.stop();
-        await cleanupRuntime();
         await writeFile(rawFile, JSON.stringify(result, null, 2));
       }
     }

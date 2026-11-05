@@ -46,7 +46,6 @@
   },
   "devDependencies": {
     "@sap/cds-dk": "latest",
-    "@cap-js/cds-test": "latest",
     "autocannon": "latest"
   },
   "description": "Focused local CAP and Oyster performance comparisons",

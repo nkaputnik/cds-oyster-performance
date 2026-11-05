@@ -73,7 +73,15 @@ function best(rows) {
     || Number(a.context.scenario.table === 'LargeRows') - Number(b.context.scenario.table === 'LargeRows')
     || (a.context.scenario.rows ?? 0) - (b.context.scenario.rows ?? 0))[0];
 }
-function unique(rows, key) { return [...new Map(rows.map(row => [key(row), row])).values()]; }
+function unique(rows, key) {
+  const seen = new Set();
+  return rows.filter(row => {
+    const id = key(row);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
 function loadLabel(result) {
   return count(result.load?.value) + (['rate', 'arrival', 'constant-arrival-rate'].includes(result.load?.kind) ? ' requests/s' : ' concurrent users');
 }
@@ -92,7 +100,7 @@ export function buildHumanReport(manifest, results, api) {
   const label = row => operation(row.context.scenario) + ': ' + (questions[row.question] || row.question)
     + (row.context.scenario.hook ? ' through extension point' : '');
   const delta = row => row ? signed(row.mean) + ' ms (' + row.n + ' matched ' + (row.n === 1 ? 'repetition' : 'repetitions') + ')' : 'unanswered: eligible matched controls are missing';
-  const answer = (parts, reason) => parts.some(p => p.row) ? parts.map(p => p.label + ': ' + delta(p.row)).join('; ') + '.' : 'Unanswered: ' + reason + '.';
+  const answer = (parts, reason) => parts.some(p => p.row) ? parts.map(p => p.label + (p.row ? ' (' + operation(p.row.context.scenario) + ')' : '') + ': ' + delta(p.row)).join('; ') + '.' : 'Unanswered: ' + reason + '.';
   const settings = manifest.settings || {}, warmup = settings.warmup ?? settings.warmupSeconds, duration = settings.duration ?? settings.measureSeconds;
   const exploratory = !['short','long'].includes(settings.suite) && (settings.suite === 'smoke' || (finite(warmup) && warmup < 15) || (finite(duration) && duration < 30));
   const shown = [];
@@ -119,7 +127,7 @@ export function buildHumanReport(manifest, results, api) {
     table(['Situation', 'Test', 'Extra time', 'Change', 'Matched repetitions'], shown.map(row => [label(row), description(row.context.scenario, row.question),
       signed(row.mean) + ' ms', finite(row.percent) ? signed(row.percent) + '%' : 'not measured', row.n])));
   else if (!whole.length) blocks.push(globalInvalid ? 'The recorded validation failed, so this run cannot establish Oyster overhead.' : 'This run has no valid matched comparison for Oyster overhead.');
-  const computationRows = findings.filter(row => !row.context.scenario.hook && row.context.scenario.operation !== 'scan' &&
+  const computationRows = findings.filter(row => !row.context.scenario.hook && row.context.scenario.operation !== 'scan' && row.context.scenario.table !== 'LargeRows' &&
     ['Execution-location penalty for CPU work', 'CPU plus auxiliary read path', 'CPU plus auxiliary write path'].includes(row.question)).slice(0, 12);
   if (computationRows.length) blocks.push(chart('Oyster overhead for calculation and CQL', 'Additional request time (ms)', computationRows.map(label), computationRows.map(row => row.mean)),
     'The same calculation runs in CAP and Oyster. CQL variants also read or update an auxiliary table; READ enrichment issues its auxiliary queries once per returned batch.');
@@ -177,7 +185,7 @@ export function buildHumanReport(manifest, results, api) {
   const dbRows = ['Native service versus database read', 'Native service versus database write', 'Oyster versus direct database read', 'Oyster versus direct database write'].map(question => select(question)).filter(Boolean);
   blocks.push('## What CQL callbacks add', callbackRows.length || dbRows.length ? table(['Comparison', 'Work performed', 'Extra time', 'Matched repetitions'], [
     ...callbackRows.map(row => [row.question === 'Auxiliary read' ? 'Extra Oyster read callback cost' : 'Extra Oyster update callback cost', operation(row.context.scenario), signed(row.mean) + ' ms', row.n]),
-    ...dbRows.map(row => [row.question.replace('database', 'Direct database'), operation(row.context.scenario), signed(row.mean) + ' ms', row.n]),
+    ...dbRows.map(row => [row.question.replace('Native service versus database', 'Native service versus direct database'), operation(row.context.scenario), signed(row.mean) + ' ms', row.n]),
   ]) : 'CQL read: unanswered. CQL write: unanswered. Four matching native/Oyster calculation and calculation-plus-IO modes are required; direct database comparisons need their own matched controls.',
     'Extra callback cost is (Oyster with IO minus Oyster without IO) minus (native with IO minus native without IO), paired within each repetition. It includes validation, query construction, data transfer and their interactions; it does not isolate one additive runtime component.');
   const extension = [['Empty handler', 'Sandbox path versus native handler'], ['Calculation without CQL', 'Execution-location penalty for CPU work'],
@@ -214,7 +222,7 @@ export function buildHumanReport(manifest, results, api) {
       errors: total('errors'), dropped: total('droppedIterations'), failed: uniqueRuns.some(r => !eligible(r)) || globalInvalid };
   });
   const chosenLoads = unique([...loadRows].sort((a, b) => Number(b.failed) - Number(a.failed) || (b.group[0].load.value ?? 0) - (a.group[0].load.value ?? 0)),
-    row => [row.group[0].scenario.mode, row.group[0].load.kind, row.group[0].scenario.mixed, row.group[0].scenario.operation].join(':')).slice(0, 8);
+    row => [row.group[0].scenario.mode, row.group[0].load.kind, row.group[0].load.value, row.group[0].scenario.mixed, row.group[0].scenario.operation].join(':')).slice(0, 8);
   if (chosenLoads.length) blocks.push(table(['Workload / execution', 'Load', 'Status / repetitions', 'Successful requests/s', 'Run p95 ms', 'Unrelated probe p95 ms', 'Errors', 'Dropped starts'],
     chosenLoads.map(row => [operation(row.group[0].scenario) + ': ' + modes[row.group[0].scenario.mode] + (row.group[0].scenario.mixed ? ' (mixed operations)' : ''), loadLabel(row.group[0]),
       (row.failed ? 'Failed' : 'Validated') + ' / ' + row.uniqueRuns.length, number(row.rps.mean), number(row.p95.mean), number(row.probe.mean), number(row.errors), number(row.dropped)])));

@@ -1,6 +1,7 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { measureHTTP } from './load.mjs';
-const config = JSON.parse(await readFile(process.argv[2], 'utf8'));
-const result = await measureHTTP(config);
-await writeFile(process.argv[3], JSON.stringify(result) + '\n');
+let input = '';
+for await (const chunk of process.stdin) input += chunk;
+const result = await measureHTTP(JSON.parse(input));
+await writeFile(process.argv[2], JSON.stringify(result));
 if (result.stats.errors || result.stats.sampleLimitReached) process.exitCode = 1;

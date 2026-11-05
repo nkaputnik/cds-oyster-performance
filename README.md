@@ -29,7 +29,7 @@ No global CDS CLI, separate server startup, database download, or data generatio
 | --- | --- | --- |
 | Time budget | 15 minutes | 90 minutes |
 | Independent repetitions | 1 | 3 |
-| Warmup / measurement per case | 2 / 5 seconds | 3 / 12 seconds |
+| Warmup / measurement per case | 2 / 4 seconds | 3 / 10 seconds |
 | Ordinary measured runs | 68 | 249 |
 | CRUD and custom actions | All baseline, empty, calculation, CQL read/write comparisons | Same, repeated |
 | READ tables | 1,000 rows and 1,000,000 rows | Same |
@@ -38,7 +38,9 @@ No global CDS CLI, separate server startup, database download, or data generatio
 | Concurrent load | 1, 8 and 32 clients on representative actions | Also mixed READ / INSERT / UPDATE / action traffic |
 | CQL fan-out | One auxiliary query | Also five auxiliary queries |
 
-The planned durations, including a five-second setup allowance per run, are about 14 minutes and 83 minutes plus whole-table processing. These are estimates, not completed campaign timings. The runner enforces the 15- and 90-minute budgets. A slow machine can reach the budget before every case finishes; the partial report then identifies missing comparisons. Use short for an initial comparison and long to assess repeat variability.
+The runner starts **two CAP processes for short and six for long**, one per app and independent repetition. Each process serves all of its fixed endpoint cases. The measurement windows total about seven minutes for short and 54 minutes for long, with deployment, verification, HTTP worker startup and report writing added. Long also includes whole-table processing. The runner enforces the 15- and 90-minute budgets; slower machines may produce a partial report.
+
+A complete short run with this static endpoint setup on 2026-11-05 finished in **about 7½ minutes**, with two CAP starts, all 68 cases validated, 580,741 successful measured requests and zero failures. Long has not yet been timed as a complete campaign. Hardware and installed dependency versions can change the duration.
 
 ## Review the result
 
@@ -84,7 +86,7 @@ Both applications use the same database:
 - Root app: db/benchmark.sqlite.
 - Plain CAP copy: ../../db/benchmark.sqlite, relative to apps/cap.
 
-Before each case, the runner stops the previous server and runs the installed CDS CLI:
+The runner deploys the retained CSVs before starting the first app. When switching apps or starting another independent repetition, it stops CAP, redeploys with the installed CDS CLI, then starts CAP again:
 
 ~~~sh
 cds deploy --to sqlite:db/benchmark.sqlite
@@ -92,7 +94,25 @@ cds deploy --to sqlite:db/benchmark.sqlite
 
 The model lives in .base/db/schema.cds, a small local npm workspace containing the model shared by both app copies. The retained CSVs live in db/data. The large CSV contains one million rows; the other four contain 1,000 rows each. No frozen database or patched data generator is used. To change the data or model, edit these files; the next deployment picks them up.
 
-The runner selects the handler case through a temporary benchmark.json and writes the corresponding Oyster handlers into the standard service handler directories. These files are ignored by Git and removed after the case. It does not clone applications or install dependencies during a run. The two app copies are tracked files; keep their service and library source identical when editing them.
+Each test has a fixed endpoint. These projections expose the same underlying tables with different handlers:
+
+| Work performed | Example write endpoint | Handler source |
+| --- | --- | --- |
+| Generic CAP CRUD | /benchmark/NoHandlerWriteRows | CAP generic provider |
+| Empty native handler | /benchmark/NativeEmptyWriteRows | srv/benchmark-service.js |
+| Empty Oyster handler | /benchmark/OysterEmptyWriteRows | srv/BenchmarkService/OysterEmptyWriteRows/ |
+| Native calculation | /benchmark/NativeCalculationWriteRows | srv/benchmark-service.js |
+| Oyster calculation | /benchmark/OysterCalculationWriteRows | srv/BenchmarkService/OysterCalculationWriteRows/ |
+| Native calculation plus CQL read | /benchmark/NativeCqlReadWriteRows | srv/benchmark-service.js |
+| Oyster calculation plus CQL read | /benchmark/OysterCqlReadWriteRows | srv/BenchmarkService/OysterCqlReadWriteRows/ |
+| Native calculation plus CQL update | /benchmark/NativeCqlWriteWriteRows | srv/benchmark-service.js |
+| Oyster calculation plus CQL update | /benchmark/OysterCqlWriteWriteRows | srv/BenchmarkService/OysterCqlWriteWriteRows/ |
+
+The same prefixes expose SmallRows and LargeRows for READ. Actions have fixed names such as nativeCalculation, oysterCalculation, nativeScan and oysterScan. Declared extension actions delegate to BenchmarkExtensionService. All Oyster handler files are stored in Git and loaded at startup. The runner chooses a URL; it does not rewrite application code or generate handlers.
+
+UPDATE requests cycle through the 1,000 seeded WriteRows. Concurrent clients use separate row partitions. INSERT requests allocate distinct keys per case, client and iteration; warmup, measurement and correctness checks use separate ranges. Lookup keys and action/write auxiliary keys rotate too. This lets multiple cases share a database deployment. READ handlers with auxiliary writes select and update the first SideEffectRows row on both paths, so that comparison includes one SELECT and one UPDATE.
+
+The two app copies are tracked files. Keep their service and library source identical when editing them.
 
 For manual inspection of the root app:
 
@@ -112,6 +132,6 @@ npm run verify
 
 npm test checks the runner, reporting, requests, and real native/Oyster persistence and rollback. npm run verify checks the short protocol's handler activation, checksums and side effects without load measurement. Verification also deploys the database and needs port 4006 free.
 
-Press Ctrl-C once to stop a benchmark. The runner stops its CAP and load-generator processes, removes generated handlers, and saves completed observations. An interrupted, budget-limited, or failed run exits with a nonzero status. Its report is partial and must not be treated as a complete result. Startup logs identify port conflicts or incompatible dependencies; configuration is not silently changed to bypass them.
+Press Ctrl-C once to stop a benchmark. The runner stops its CAP and load-generator processes, and saves completed observations. An interrupted, budget-limited, or failed run exits with a nonzero status. Its report is partial and must not be treated as a complete result. Startup logs identify port conflicts or incompatible dependencies; configuration is not silently changed to bypass them.
 
-Reports, SQLite files, dependencies, and temporary configuration are ignored by Git. Share the complete result directory when someone needs to inspect the evidence behind a report.
+Reports, SQLite files, dependencies, and logs are ignored by Git. Share the complete result directory when someone needs to inspect the evidence behind a report.

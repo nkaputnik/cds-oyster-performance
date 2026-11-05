@@ -6,6 +6,7 @@ export function callbackBudget(s) {
   if (!s.mode.startsWith('wasm-')) return 0;
   if (s.operation === 'scan') return Math.ceil(s.scanRows / s.pageSize);
   if (!s.mode.endsWith('-read') && !s.mode.endsWith('-write')) return 0;
+  if (s.operation === 'read' && s.mode.endsWith('-write')) return 2 * s.callbacks;
   return s.callbacks * (s.operation === 'read' && !s.hook && s.enrichment === 'per-row' ? s.rows : 1);
 }
 

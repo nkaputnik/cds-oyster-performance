@@ -33,7 +33,7 @@ export function inspectFixture(database = DATABASE_PATH) {
       const sample = db.prepare('SELECT ID, groupNo, value, text FROM perf_' + name + ' ORDER BY ID LIMIT 1000').all();
       if (!summary.count || summary.uniqueKeys !== summary.count)
         throw new Error('CSV data must contain rows with unique keys for ' + name);
-      tables[name] = { ...summary, ids: sample.map(r => r.ID), sample: sample.slice(0, 5) };
+      tables[name] = { ...summary, ids: sample.map(r => r.ID), sample };
     }
     const pragmas = {};
     for (const key of ['journal_mode', 'synchronous', 'busy_timeout', 'page_size', 'cache_size']) pragmas[key] = db.prepare('PRAGMA ' + key).all();

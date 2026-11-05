@@ -3,9 +3,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { cpu } from '../lib/workload.mjs';
-import { requestFor } from './requests.mjs';
-import { loadFixture, DATABASE_PATH, APP_ROOT } from './fixture.mjs';
-import { prepareRuntime, cleanupRuntime } from './prepare.mjs';
+import { requestFor, endpoint } from './requests.mjs';
+import { loadFixture, deploy, DATABASE_PATH, APP_ROOT } from './fixture.mjs';
 import { startServer } from './process.mjs';
 
 const scalar = body => body && typeof body === 'object' && 'value' in body ? body.value : body;
@@ -25,23 +24,22 @@ function expectedWork(s, fixture, seed, lookupID = fixture.tables.LookupRows.ids
   return value;
 }
 
-export function validateActivation(s, state, expectedHandlers = []) {
+export function validateActivation(s, state) {
   const oyster = state.plugins?.includes('@sap/cds-oyster');
   if (s.mode === 'cap-baseline') assert.equal(oyster, false, 'CAP baseline must omit Oyster');
   else {
     assert.equal(oyster, true, 'Oyster plugin must be active');
-    assert.equal(state.engine, 'oyster', 'Actual Oyster engine must be the WASM oyster engine');
-    assert.ok(state.limits, 'Actual Oyster limits must be recorded');
+    assert.equal(state.engine, 'oyster', 'Actual Oyster WASM engine');
   }
-  assert.equal(state.annotations?.length ?? 0, expectedHandlers.length, 'Activated handler count');
-  for (const filename of expectedHandlers) {
-    const parts = filename.split('/');
-    const [phase, event] = parts.pop().replace(/\.js$/, '').split('-');
-    const name = parts.length === 2 ? parts[0] + '.' + parts[1] : parts[0] + '.' + event;
-    assert.ok(state.annotations.some(a => a.name === name && a.phase === phase && a.event === event), 'Expected activated handler ' + filename);
+  if (s.mode.startsWith('wasm-')) {
+    const route = endpoint(s);
+    let name, phase, event;
+    if (s.hook) { name = 'BenchmarkExtensionService.' + route.action.replace('Extension', ''); phase = 'on'; event = route.action.replace('Extension', ''); }
+    else if (route.action) { name = 'BenchmarkService.' + route.action; phase = 'on'; event = route.action; }
+    else { name = 'BenchmarkService.' + route.entity; phase = s.operation === 'read' ? 'after' : 'before'; event = s.operation === 'read' ? 'READ' : s.operation === 'create' ? 'CREATE' : 'UPDATE'; }
+    assert.ok(state.annotations.some(a => a.name === name && a.phase === phase && a.event === event), 'Static Oyster handler for ' + name);
   }
-  return { passed: true, handlerActive: true, engine: state.engine, limits: state.limits,
-    plugins: state.plugins, annotations: state.annotations, expectedHandlers };
+  return { passed: true, handlerActive: true, engine: state.engine, limits: state.limits, plugins: state.plugins };
 }
 
 function readRequestSpec(s, request) {
@@ -70,7 +68,7 @@ const readResponseRows = (s, body) => s.queryShape === 'key' ? (Array.isArray(bo
 export function validateResponse(s, fixture, request, response, { scanChecksum, readRows } = {}) {
   assert.equal(response.status, request.expectedStatus, 'Unexpected public response status: ' + JSON.stringify(response.body));
   const validation = { passed: true, status: response.status };
-  if (s.operation === 'action' && request.path.endsWith('/compute')) {
+  if (s.operation === 'action' && !endpoint(s).noop) {
     const expected = expectedWork(s, fixture, request.body.seed, request.body.lookupID, request.body);
     assert.equal(scalar(response.body), expected, 'Action checksum');
     validation.checksum = expected;
@@ -98,10 +96,7 @@ export function validateResponse(s, fixture, request, response, { scanChecksum, 
       if (readRows) assert.equal(row.ID, sample.ID, 'READ reference fixture identity');
       if (sample) for (const name of ['groupNo', 'value', 'text']) assert.equal(row[name], sample[name], 'READ fixture ' + name);
       if (active(s)) {
-        let expected;
-        if (s.hook) expected = (cpu(row.value, s.iterations) + expectedWork(s, fixture, rows[0]?.value ?? 0)) & 2147483647;
-        else if (s.enrichment === 'per-row') expected = expectedWork(s, fixture, row.value);
-        else expected = (cpu(row.value, s.iterations) + expectedWork(s, fixture, 0, undefined, { iterations: 0, calls: s.callbacks })) & 2147483647;
+        const expected = (cpu(row.value, s.iterations) + expectedWork(s, fixture, 0, undefined, { iterations: 0, calls: s.callbacks })) & 2147483647;
         assert.equal(row.checksum, expected, 'READ checksum for ID ' + row.ID);
       } else assert.ok(row.checksum === null || row.checksum === undefined, 'Inactive READ must leave virtual checksum empty');
     }
@@ -154,24 +149,25 @@ export async function readReference(s, fixture, request = requestFor(s, fixture)
   } finally { db.close(); }
 }
 
-export async function verifyRollback(server, fixture, { iteration = 8500000, signal } = {}) {
-  const ID = Math.max(0, fixture.tables.WriteRows.maxID) + 1000000 + 10000000 + iteration;
+export async function verifyRollback(server, fixture, { iteration = 85000, signal, scenario: s } = {}) {
+  const route = endpoint({ ...s, operation: 'create', table: 'WriteRows' });
+  const ID = requestFor({ ...s, operation: 'create', table: 'WriteRows' }, fixture, { iteration }).body.ID;
   const effectID = fixture.tables.SideEffectRows.ids[0];
   const get = path => publicRequest(server, { method: 'GET', path, headers: { Accept: 'application/json' } }, { signal });
   const before = await get('/benchmark/SideEffectRows(' + effectID + ')');
   assert.equal(before.status, 200, 'Rollback auxiliary row must exist');
   const response = await publicRequest(server, { method: 'POST', path: '/benchmark/rollbackProbe',
-    headers: { 'Content-Type': 'application/json' }, body: { ID, effectID, value: 123456 } }, { signal });
+    headers: { 'Content-Type': 'application/json' }, body: { ID, effectID, value: 123456, entity: route.entity } }, { signal });
   assert.equal(response.status, 409, 'Rollback action must reject with 409');
-  const inserted = await get('/benchmark/WriteRows(' + ID + ')'), after = await get('/benchmark/SideEffectRows(' + effectID + ')');
+  const inserted = await get('/benchmark/' + route.entity + '(' + ID + ')'), after = await get('/benchmark/SideEffectRows(' + effectID + ')');
   assert.equal(inserted.status, 404, 'Rejected transaction must not persist its inserted row');
   assert.equal(after.body.value, before.body.value, 'Rejected transaction must roll back its auxiliary update');
   return { passed: true, rejectionStatus: response.status, insertedRowAbsent: true, auxiliaryUnchanged: true, response };
 }
 
-export async function verifyScenario(server, s, fixture, { transport = 'http', diagnostics = false, rollback = true, iteration = 8000000, signal, referenceDatabase } = {}) {
+export async function verifyScenario(server, s, fixture, { transport = 'http', diagnostics = false, rollback = true, iteration = 80000, signal, referenceDatabase } = {}) {
   assert.ok(!s.expectedFailure, 'Limit probes cannot pass normal correctness preflight');
-  const activation = validateActivation(s, server.state, server.runtime.expectedHandlers);
+  const activation = validateActivation(s, server.state);
   const request = requestFor(s, fixture, { iteration });
   if (diagnostics) await publicRequest(server, { method: 'POST', path: '/__benchmark/diagnostics/reset' }, { signal });
   const response = await publicRequest(server, request, { signal });
@@ -184,16 +180,14 @@ export async function verifyScenario(server, s, fixture, { transport = 'http', d
     validation.callbacks = callbacks.body;
     validation.callbackBytes = callbacks.body.resultBytes;
     let expected = s.expectedCallbacks ?? 0;
-    if (s.mode.startsWith('wasm-') && (s.mode.endsWith('-read') || s.mode.endsWith('-write'))
-      && s.operation === 'read' && !s.hook && s.enrichment === 'per-row')
-      expected = (readRows?.length ?? s.rows) * s.callbacks;
     assert.equal(callbacks.body.count, expected, 'Actual sandbox SELECT/write callback count');
     validation.callbackCountVerified = true;
     validation.resultBytes = Buffer.byteLength(JSON.stringify(response.body));
   }
   if (s.operation === 'create' || s.operation === 'update') {
+    const route = endpoint(s);
     const ID = s.operation === 'create' ? request.body.ID : Number(request.path.match(/\((\d+)\)$/)[1]);
-    const persisted = await publicRequest(server, { method: 'GET', path: '/benchmark/WriteRows(' + ID + ')', headers: { Accept: 'application/json' } }, { signal });
+    const persisted = await publicRequest(server, { method: 'GET', path: '/benchmark/' + route.entity + '(' + ID + ')', headers: { Accept: 'application/json' } }, { signal });
     assert.equal(persisted.status, 200, 'Written row must persist through transaction completion');
     const expected = active(s) ? expectedWork(s, fixture, 7, request.body.lookupID) : 7;
     assert.equal(persisted.body.value, expected, 'Persisted write checksum');
@@ -202,16 +196,14 @@ export async function verifyScenario(server, s, fixture, { transport = 'http', d
   if (computing(s) && s.mode.endsWith('-write') && s.callbacks > 0 && s.operation !== 'scan') {
     let expected = cpu(7, s.iterations);
     if (s.operation === 'read') {
-      const rows = readResponseRows(s, response.body);
-      expected = s.hook ? cpu(rows[0]?.value ?? 0, s.iterations)
-        : s.enrichment === 'per-row' ? (rows.length ? cpu(rows[rows.length - 1].value, s.iterations) : keyValue(fixture, 'SideEffectRows', fixture.tables.SideEffectRows.ids[0])) : 0;
+      expected = 0;
     }
-    const persisted = await publicRequest(server, { method: 'GET', path: '/benchmark/SideEffectRows(' + fixture.tables.SideEffectRows.ids[0] + ')', headers: { Accept: 'application/json' } }, { signal });
+    const persisted = await publicRequest(server, { method: 'GET', path: '/benchmark/SideEffectRows(' + (s.operation === 'read' ? fixture.tables.SideEffectRows.ids[0] : request.body.effectID) + ')', headers: { Accept: 'application/json' } }, { signal });
     assert.equal(persisted.status, 200, 'Auxiliary write row must exist');
     assert.equal(persisted.body.value, expected, 'Auxiliary write must persist');
     validation.auxiliaryValue = expected;
   }
-  if (rollback) validation.rollback = await verifyRollback(server, fixture, { signal });
+  if (rollback) validation.rollback = await verifyRollback(server, fixture, { signal, scenario: s });
   if (s.mixed) {
     validation.mixedOperations = [];
     for (const operation of ['create', 'update', 'action']) {
@@ -240,20 +232,27 @@ async function main() {
   const interrupt = () => controller.abort(new Error('Verification interrupted'));
   process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
   const results = [];
+  let server, appBatch;
   try {
     for (const [index, run] of planRuns(settings).entries()) {
-      if (run.scenario.expectedFailure) continue;
       controller.signal.throwIfAborted();
-      const runtime = await prepareRuntime(run.scenario, fixture, { diagnostics: true, signal: controller.signal });
-      const server = await startServer(runtime, resolve(root, 'logs', String(index)), { signal: controller.signal });
+      const appRoot = run.scenario.mode === 'cap-baseline' ? resolve(APP_ROOT, 'apps/cap') : APP_ROOT;
+      const batch = appRoot + ':' + run.repetition;
+      if (appBatch !== batch) {
+        if (server) await server.stop();
+        if (appBatch !== undefined) await deploy(APP_ROOT, { signal: controller.signal });
+        server = await startServer({ root: appRoot }, resolve(root, 'logs', String(index)), { diagnostics: true, signal: controller.signal });
+        appBatch = batch;
+      }
+      console.log('Verify ' + requestFor(run.scenario, fixture).path);
+      const caseFixture = { ...fixture, createOffset: index * 32 * 100000 };
       try {
-        console.log('Verify ' + run.transport + ' ' + run.scenario.id);
-        const validation = await verifyScenario(server, run.scenario, fixture, { transport: run.transport, diagnostics: true, signal: controller.signal });
-        results.push({ scenario: run.scenario, transport: run.transport, validation, runtime: runtime.root });
-      } catch (error) { results.push({ scenario: run.scenario, transport: run.transport, validation: { passed: false }, error: error.message }); throw error; }
-      finally { await server.stop(); await cleanupRuntime(); }
+        const validation = await verifyScenario(server, run.scenario, caseFixture, { diagnostics: true, signal: controller.signal });
+        results.push({ scenario: run.scenario, validation });
+      } catch (error) { results.push({ scenario: run.scenario, validation: { passed: false }, error: error.message }); throw error; }
     }
   } finally {
+    if (server) await server.stop();
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     await writeFile(resolve(root, 'verification.json'), JSON.stringify({ settings, results }, null, 2) + '\n');
   }

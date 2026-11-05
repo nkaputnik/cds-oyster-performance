@@ -19,21 +19,21 @@ test('writes use disjoint generated keys and enforce their integer allocation bo
   const first = api.requestFor(create, fixture, { vu: 1, iteration: 0 });
   const next = api.requestFor(create, fixture, { vu: 1, iteration: 1 });
   const other = api.requestFor(create, fixture, { vu: 2, iteration: 0 });
-  assert.equal(first.body.ID, 11000083);
-  assert.equal(next.body.ID, 11000084);
-  assert.equal(other.body.ID, 21000083);
-  assert.deepEqual(first.body, { ID: 11000083, groupNo: 7, value: 7, text: 'benchmark', lookupID: 101, effectID: 109 });
+  assert.equal(first.body.ID, 1100083);
+  assert.equal(next.body.ID, 1100084);
+  assert.equal(other.body.ID, 1200083);
+  assert.deepEqual(first.body, { ID: 1100083, groupNo: 7, value: 7, text: 'benchmark', lookupID: 101, effectID: 109 });
   assert.equal(first.headers['Content-Type'], 'application/json');
   assert.equal(first.expectedStatus, 201);
-  assert.throws(() => api.requestFor(create, fixture, { vu: 215 }), /Integer|32-bit|range/);
-  assert.throws(() => api.requestFor(create, fixture, { iteration: 10000000 }), /iteration/);
+  assert.throws(() => api.requestFor(create, { ...fixture, createOffset: 2147483647 }), /Integer|32-bit|range/);
+  assert.throws(() => api.requestFor(create, fixture, { iteration: 100000 }), /iteration/);
   assert.throws(() => api.requestFor(create, fixture, { vu: 0 }), /vu/);
 });
 
 test('updates partition actual sparse fixture keys by virtual user', () => {
   const s = { ...base, operation: 'update', table: 'WriteRows' };
-  assert.equal(api.requestFor(s, fixture, { vu: 1, iteration: 900 }).path, '/benchmark/WriteRows(19)');
-  assert.equal(api.requestFor(s, fixture, { vu: 2 }).path, '/benchmark/WriteRows(41)');
+  assert.equal(api.requestFor(s, fixture, { vu: 1, iteration: 900 }).path, '/benchmark/NoHandlerWriteRows(19)');
+  assert.equal(api.requestFor(s, fixture, { vu: 2, clients: 3 }).path, '/benchmark/NoHandlerWriteRows(41)');
   assert.deepEqual(api.requestFor(s, fixture).body, { value: 7, lookupID: 101, effectID: 109 });
   assert.throws(() => api.requestFor(s, fixture, { vu: 4 }), /fixture|partition/);
 });
@@ -42,7 +42,7 @@ test('READ requests select checked fields, stable order and the requested row co
   const request = api.requestFor({ ...base, operation: 'read', table: 'LargeRows' }, fixture);
   const url = new URL(request.path, 'http://local');
   assert.equal(request.method, 'GET');
-  assert.equal(url.pathname, '/benchmark/LargeRows');
+  assert.equal(url.pathname, '/benchmark/NoHandlerLargeRows');
   assert.equal(url.searchParams.get('$select'), 'ID,groupNo,value,text,checksum');
   assert.equal(url.searchParams.get('$orderby'), 'ID');
   assert.equal(url.searchParams.get('$top'), '2');
@@ -52,7 +52,7 @@ test('READ requests select checked fields, stable order and the requested row co
 test('READ shapes use actual sparse keys, indexed ranges, non-indexed filters and offsets', () => {
   const read = { ...base, operation: 'read' };
   const key = new URL(api.requestFor({ ...read, queryShape: 'key' }, fixture, { vu: 2 }).path, 'http://local');
-  assert.equal(key.pathname, '/benchmark/SmallRows(37)');
+  assert.equal(key.pathname, '/benchmark/NoHandlerSmallRows(37)');
   assert.equal(key.searchParams.get('$select'), 'ID,groupNo,value,text,checksum');
   const range = new URL(api.requestFor({ ...read, queryShape: 'range' }, fixture, { vu: 2 }).path, 'http://local');
   assert.equal(range.searchParams.get('$filter'), 'ID ge 37 and ID le 99');
@@ -63,26 +63,40 @@ test('READ shapes use actual sparse keys, indexed ranges, non-indexed filters an
   for (const queryShape of ['page', 'key', 'range', 'non-indexed', 'offset']) {
     const a = api.requestFor({ ...read, mode: 'native-empty', queryShape, offset: queryShape === 'offset' ? 1 : 0 }, fixture);
     const b = api.requestFor({ ...read, mode: 'wasm-empty', queryShape, offset: queryShape === 'offset' ? 1 : 0 }, fixture);
-    assert.deepEqual(a, b, queryShape);
+    assert.deepEqual({ ...a, path: a.path.replace('NativeEmpty', 'OysterEmpty') }, b, queryShape);
   }
 });
 
-test('hook actions invoke the application compute action even with idle or empty engines', () => {
-  for (const mode of ['oyster-idle', 'native-empty', 'wasm-empty']) {
-    const request = api.requestFor({ ...base, mode, hook: true }, fixture, { vu: 2 });
-    assert.equal(request.path, '/benchmark/compute');
-    assert.deepEqual(request.body, { seed: 7, iterations: 100, calls: 1, lookupID: 203, effectID: 211 });
-  }
+test('each handler uses a fixed projection or action endpoint', () => {
   assert.equal(api.requestFor(base, fixture).path, '/benchmark/noop');
   assert.equal(api.requestFor(base, fixture).expectedStatus, 204);
-  assert.equal(api.requestFor({ ...base, mode: 'wasm-compute-read' }, fixture).path, '/benchmark/compute');
+  for (const [mode, action] of [['native-empty', 'nativeEmptyExtension'], ['wasm-empty', 'oysterEmptyExtension'], ['wasm-compute-read', 'oysterCqlReadExtension']]) {
+    const request = api.requestFor({ ...base, mode, hook: true }, fixture, { vu: 2, clients: 3 });
+    assert.equal(request.path, '/benchmark/' + action);
+    assert.deepEqual(request.body, { seed: 7, iterations: 100, calls: 1, lookupID: 203, effectID: 211 });
+  }
+  assert.equal(api.requestFor({ ...base, mode: 'wasm-compute-read' }, fixture).path, '/benchmark/oysterCqlRead');
 });
 
-test('scan starts before the first generated sparse key', () => {
+test('writes rotate through seeded rows within disjoint client partitions', () => {
+  const s = { ...base, operation: 'update', table: 'WriteRows' };
+  assert.deepEqual([0, 1, 2, 3].map(iteration => api.requestFor(s, fixture, { iteration }).path),
+    [19, 41, 83, 19].map(ID => '/benchmark/NoHandlerWriteRows(' + ID + ')'));
+  assert.deepEqual([0, 1, 2].map(iteration => api.requestFor(s, fixture, { iteration }).body.effectID), [109, 211, 313]);
+  const ids = Array.from({ length: 1000 }, (_, i) => i + 1);
+  const large = { tables: Object.fromEntries(Object.keys(fixture.tables).map(name => [name, { ids, maxID: 1000 }])) };
+  const partitions = Array.from({ length: 32 }, (_, i) => new Set(Array.from({ length: 31 }, (_, iteration) =>
+    api.requestFor(s, large, { vu: i + 1, clients: 32, iteration }).path)));
+  assert.equal(new Set(partitions.flatMap(set => [...set])).size, 992);
+  const create = { ...s, operation: 'create' };
+  assert.notEqual(api.requestFor(create, large).body.ID, api.requestFor(create, { ...large, createOffset: 3200000 }).body.ID);
+});
+
+test('scan uses a fixed action and starts before the first sparse key', () => {
   const scan = api.requestFor({ ...base, operation: 'scan', table: 'LargeRows' }, fixture);
-  assert.equal(scan.path, '/benchmark/scan');
-  assert.deepEqual(scan.body, { cursor: 20, count: 1000, pageSize: 80 });
-  assert.equal(api.requestFor({ ...base, operation: 'scan' }, fixture).body.cursor, 20);
+  assert.equal(scan.path, '/benchmark/nativeScan');
+  assert.deepEqual(scan.body, { cursor: 20, count: 1000, pageSize: 80, iterations: 100 });
+  assert.equal(api.requestFor({ ...base, operation: 'scan', mode: 'wasm-compute' }, fixture).path, '/benchmark/oysterScan');
 });
 
 test('resource sampler records server RSS, CPU and event loop delay over one interval', async () => {

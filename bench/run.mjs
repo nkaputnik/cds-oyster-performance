@@ -3,11 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import { suite, shuffled } from './scenarios.mjs';
-import { APP_ROOT, loadFixture, hashFile } from './fixture.mjs';
-import { prepareRuntime, cleanupRuntime } from './prepare.mjs';
+import { APP_ROOT, deploy, loadFixture, hashFile } from './fixture.mjs';
 import { startServer, executeCommand } from './process.mjs';
 import { requestFor } from './requests.mjs';
-import { validateActivation, validateResponse, verifyScenario, publicRequest, scanReference } from './verify.mjs';
+import { verifyScenario } from './verify.mjs';
 import { writeReport } from './report.mjs';
 import { measureWholeScan } from './whole-scan.mjs';
 
@@ -24,7 +23,7 @@ export function parseArgs(args = process.argv.slice(2)) {
   suite(settings.suite);
   const short = settings.suite === 'short';
   settings.warmup = Number(settings.warmup ?? (short ? 2 : 3));
-  settings.duration = Number(settings.duration ?? (short ? 5 : 12));
+  settings.duration = Number(settings.duration ?? (short ? 4 : 10));
   settings.repetitions = Number(settings.repetitions ?? (short ? 1 : 3));
   settings.budgetSeconds = short ? 900 : 5400;
   settings.seed = Number(settings.seed);
@@ -40,7 +39,7 @@ export function planRuns(settings) {
   const workloads = suite(settings.suite).filter(s => !settings.filter || new RegExp(settings.filter).test(s.id));
   const runs = workloads.map(scenario => ({ scenario, transport: 'http', load: scenario.benchmarkLoad || { kind: 'vus', value: 1 } }));
   return Array.from({ length: settings.repetitions }, (_, i) =>
-    shuffled(runs, settings.seed + i).map(run => ({ ...run, repetition: i + 1 }))).flat();
+    shuffled(runs, settings.seed + i).sort((a, b) => Number(a.scenario.mode !== 'cap-baseline') - Number(b.scenario.mode !== 'cap-baseline')).map(run => ({ ...run, repetition: i + 1 }))).flat();
 }
 
 const emptyResources = () => ({ cpuPercent: null, rssPeakMiB: null, eventLoopP99Ms: null, gcCount: null, gcMs: null, clientCpuPercent: null });
@@ -49,52 +48,24 @@ const emptyStats = () => ({ samples: null, successes: null, errors: null, droppe
 const errorText = error => error?.message || String(error);
 const saveJSON = (file, value) => writeFile(file, JSON.stringify(value, null, 2) + '\n');
 
-function singleStats(response, successful, elapsedSeconds) {
-  const ms = successful ? response.durationMs : null;
-  return { samples: 1, successes: successful ? 1 : 0, errors: successful ? 0 : 1, droppedIterations: 0,
-    p50Ms: ms, p95Ms: ms, p99Ms: ms, meanMs: ms, successfulRps: (successful ? 1 : 0) / elapsedSeconds,
-    offeredRps: 1 / elapsedSeconds, completedRps: 1 / elapsedSeconds, elapsedSeconds };
-}
-
 async function runHTTP(run, { server, fixture, settings, rawDir, prefix, signal }, phase) {
   const summaryFile = resolve(rawDir, prefix + '-' + phase + '.http.json');
-  const configFile = resolve(rawDir, prefix + '-' + phase + '.config.json');
   const config = { url: server.url, scenario: run.scenario, fixture, load: run.load, phase,
     seconds: phase === 'warmup' ? settings.warmup : settings.duration,
     probeRate: run.load.value > 1 ? 1 : 0 };
-  await saveJSON(configFile, config);
-  const command = await executeCommand(process.execPath, [resolve(APP_ROOT, 'bench/load-worker.mjs'), configFile, summaryFile],
-    { logPrefix: resolve(rawDir, prefix + '-' + phase + '.http'), signal, measureCpu: true, timeoutMs: (config.seconds + 20) * 1000 });
+  const command = await executeCommand(process.execPath, [resolve(APP_ROOT, 'bench/load-worker.mjs'), summaryFile],
+    { logPrefix: resolve(rawDir, prefix + '-' + phase + '.http'), signal, input: JSON.stringify(config), measureCpu: true, timeoutMs: (config.seconds + 20) * 1000 });
   let summary = null;
   try { summary = JSON.parse(await readFile(summaryFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  return { command, summary, summaryFile, configFile };
+  return { command, summary, summaryFile };
 }
 
 export async function executeRun(run, context) {
   const { server, fixture, settings, rawDir, prefix, signal } = context;
-  const base = { ...run, activeState: server.state, runtime: server.runtime.root, resources: emptyResources() };
-  const cold = { ...base, phase: 'cold', stats: emptyStats(), rawFile: resolve(rawDir, prefix + '-cold.json') };
-  const results = [cold];
+  const result = { ...run, phase: 'warm', activeState: server.state, runtime: server.runtime.root,
+    stats: emptyStats(), resources: emptyResources(), rawFile: resolve(rawDir, prefix + '.json') };
   try {
-    validateActivation(run.scenario, server.state, server.runtime.expectedHandlers);
-    const request = requestFor(run.scenario, fixture, { iteration: 9000000 });
-    const response = await publicRequest(server, request, { signal });
-    cold.response = response;
-    cold.stats = singleStats(response, response.status === request.expectedStatus, response.durationMs / 1000);
-    cold.validation = validateResponse(run.scenario, fixture, request, response,
-      { scanChecksum: run.scenario.operation === 'scan' ? await scanReference(run.scenario) : undefined });
-    cold.validation = await verifyScenario(server, run.scenario, fixture, { signal });
-  } catch (error) {
-    cold.error = errorText(error);
-    cold.validation = { passed: false, reason: cold.error };
-    cold.stats.errors ??= 1;
-    await saveJSON(cold.rawFile, cold);
-    return results;
-  }
-  await saveJSON(cold.rawFile, cold);
-  const warm = { ...base, phase: 'warm', stats: emptyStats(), rawFile: resolve(rawDir, prefix + '-warm.json') };
-  results.push(warm);
-  try {
+    const preflight = await verifyScenario(server, run.scenario, fixture, { signal });
     if (settings.warmup > 0) {
       const warmup = await runHTTP(run, context, 'warmup');
       if (warmup.command.code !== 0 || !warmup.summary || warmup.summary.stats.errors > 0)
@@ -103,19 +74,19 @@ export async function executeRun(run, context) {
     await server.call('metrics-start');
     let measurement;
     try { measurement = await runHTTP(run, context, 'measure'); }
-    finally { if (server.alive) warm.resources = await server.call('metrics-stop'); }
-    if (!measurement.summary) throw new Error('HTTP generator produced no summary; inspect ' + measurement.command.stderrPath);
-    Object.assign(warm, { stats: measurement.summary.stats, probe: measurement.summary.probe });
-    warm.resources.clientCpuPercent = measurement.command.clientCpuPercent;
+    finally { if (server.alive) result.resources = await server.call('metrics-stop'); }
+    if (!measurement.summary) throw new Error('HTTP generator produced no summary');
+    Object.assign(result, { stats: measurement.summary.stats, probe: measurement.summary.probe });
+    result.resources.clientCpuPercent = measurement.command.clientCpuPercent;
     if (measurement.command.code !== 0) throw new Error('HTTP generator exited ' + measurement.command.code);
-    if (warm.stats.sampleLimitReached) throw new Error('HTTP sample limit reached');
-    if (warm.stats.errors > 0) throw new Error('Measurement contained ' + warm.stats.errors + ' failed requests');
-    warm.validation = { preflight: cold.validation,
-      postflight: await verifyScenario(server, run.scenario, fixture, { rollback: false, iteration: 8000001, signal }), passed: true };
-  } catch (error) { warm.error = errorText(error); warm.validation = { passed: false, reason: warm.error }; }
-  warm.serverExit = server.exit;
-  await saveJSON(warm.rawFile, warm);
-  return results;
+    if (result.stats.sampleLimitReached) throw new Error('HTTP sample limit reached');
+    if (result.stats.errors) throw new Error('Measurement contained ' + result.stats.errors + ' failed requests');
+    result.validation = { preflight,
+      postflight: await verifyScenario(server, run.scenario, fixture, { rollback: false, iteration: 80001, signal }), passed: true };
+  } catch (error) { result.error = errorText(error); result.validation = { passed: false, reason: result.error }; }
+  result.serverExit = server.exit;
+  await saveJSON(result.rawFile, result);
+  return [result];
 }
 
 export async function sourceHashes() {
@@ -123,7 +94,7 @@ export async function sourceHashes() {
   async function visit(root) {
     for (const entry of await readdir(resolve(APP_ROOT, root), { withFileTypes: true })) {
       const path = root ? root + '/' + entry.name : entry.name;
-      if (entry.isDirectory()) { if (['srv', 'lib', 'bench', '.base', 'db', 'apps'].includes(root ? root.split('/')[0] : entry.name) && entry.name !== 'data' && entry.name !== 'node_modules') await visit(path); }
+      if (entry.isDirectory()) { if (['srv', 'lib', 'bench', '.base', 'db', 'apps'].includes(root ? root.split('/')[0] : entry.name) && !['data', 'node_modules', '.runs', '.git', 'reports', 'logs'].includes(entry.name)) await visit(path); }
       else if (/\.(mjs|js|cds|json)$/.test(entry.name) && !entry.name.endsWith('.sqlite')) hashes[path] = await hashFile(resolve(APP_ROOT, path));
     }
   }
@@ -152,10 +123,9 @@ export async function runBenchmark(settings) {
     notes: ['HTTP throughput uses observed generator elapsed time; latency contains only successful responses.',
       'Probe counts are separate. Scheduled arrivals and dropped workload iterations are unavailable from autocannon.',
       'Generator CPU uses /usr/bin/time -p when available. 100% equals one CPU core. CPU alone does not establish generator saturation.',
-      'Cold is the first business invocation after service readiness, without a guarantee of a cold OS cache.',
-      'Each runtime database is deployed by the CDS CLI from the model and retained CSV files.'] };
+      'Each app is stopped, redeployed from CSVs, and restarted once per repetition. Endpoint cases reuse that server and rotate seeded write rows.'] };
   const results = [];
-  let fatal;
+  let fatal, server, appBatch;
   try {
     const dependency = await executeCommand('npm', ['ls', '--all', '--json'], { logPrefix: resolve(rawDir, 'dependencies'), signal: controller.signal });
     manifest.environment.dependencyTreeExitCode = dependency.code;
@@ -167,27 +137,32 @@ export async function runBenchmark(settings) {
       controller.signal.throwIfAborted();
       const prefix = String(index + 1).padStart(4, '0') + '-' + run.transport + '-rep' + run.repetition;
       console.log('Run ' + (index + 1) + '/' + runs.length + ': ' + run.transport + ' ' + run.scenario.id + ' ' + run.load.kind + '=' + run.load.value);
-      let server, runtime;
       try {
-        runtime = await prepareRuntime(run.scenario, fixture, { signal: controller.signal });
-        server = await startServer(runtime, resolve(reportDir, 'logs', prefix), { signal: controller.signal });
-        results.push(...await executeRun(run, { server, fixture, settings, rawDir, prefix, signal: controller.signal }));
+        const root = run.scenario.mode === 'cap-baseline' ? resolve(APP_ROOT, 'apps/cap') : APP_ROOT;
+        const batch = root + ':' + run.repetition;
+        if (appBatch !== batch) {
+          if (server) await server.stop();
+          server = null;
+          if (appBatch !== undefined) await deploy(APP_ROOT, { signal: controller.signal });
+          server = await startServer({ root }, resolve(reportDir, 'logs', prefix), { signal: controller.signal });
+          appBatch = batch;
+        }
+        const caseFixture = { ...fixture, createOffset: index * 32 * 100000 };
+        results.push(...await executeRun(run, { server, fixture: caseFixture, settings, rawDir, prefix, signal: controller.signal }));
       } catch (error) {
-        const failed = { ...run, phase: 'cold', stats: emptyStats(), resources: emptyResources(),
+        const failed = { ...run, phase: 'warm', stats: emptyStats(), resources: emptyResources(),
           expectedFailure: run.scenario.expectedFailure, error: errorText(error), validation: { passed: false },
           rawFile: resolve(rawDir, prefix + '-startup-error.json') };
-        await saveJSON(failed.rawFile, failed); results.push(failed);
-      } finally {
-        if (server) await server.stop();
-        await cleanupRuntime();
+        await saveJSON(failed.rawFile, failed); results.push(failed); throw error;
       }
       await writeReport(reportDir, manifest, results);
     }
     if (settings.suite === 'long' && !settings.filter && !controller.signal.aborted) {
-      await measureWholeScan({ fixture, settings, reportDir, signal: controller.signal, results });
+      await measureWholeScan({ fixture, settings, reportDir, signal: controller.signal, results, server });
     }
   } catch (error) { fatal = error; manifest.error = errorText(error); }
   finally {
+    if (server) await server.stop();
     clearTimeout(timer);
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     if (controller.signal.aborted) manifest.error ??= errorText(controller.signal.reason);

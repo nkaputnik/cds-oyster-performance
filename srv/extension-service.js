@@ -1,15 +1,13 @@
 import cds from '@sap/cds';
-import { settings } from '../lib/settings.mjs';
-import { executeWork } from '../lib/workload.mjs';
+import { cpu, executeWork } from '../lib/workload.mjs';
 import { nativeIO } from './benchmark-service.js';
 
 export default class BenchmarkExtensionService extends cds.ApplicationService {
   async init() {
-    const s = settings().scenario;
-    if (s.hook && s.mode.startsWith('native-')) {
-      const io = nativeIO(this, s);
-      this.on('evaluate', req => s.mode === 'native-empty' ? req.data.seed : executeWork(req.data, io));
-    }
+    this.on('nativeEmpty', req => req.data.seed);
+    this.on('nativeCalculation', req => cpu(req.data.seed, req.data.iterations));
+    this.on('nativeCqlRead', req => executeWork(req.data, nativeIO(this, 'read')));
+    this.on('nativeCqlWrite', req => executeWork(req.data, nativeIO(this, 'write')));
     return super.init();
   }
 }

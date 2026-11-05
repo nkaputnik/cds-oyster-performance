@@ -14,7 +14,7 @@ export async function measureHTTP({ url, scenario, fixture, load, seconds, phase
   let probeAttempts = 0, probeErrors = 0, probeBusy = false, probeDropped = 0;
   const pendingProbes = new Set();
   const connections = load.value;
-  const offset = phase === 'warmup' ? 0 : 5000000;
+  const offset = phase === 'warmup' ? 0 : 50000;
   const maximumSamples = 5000000;
   const sample = (values, duration) => {
     if (values.length >= maximumSamples) { samplesCapped = true; return; }
@@ -51,7 +51,7 @@ export async function measureHTTP({ url, scenario, fixture, load, seconds, phase
               const operation = iteration % 10 < 7 ? 'read' : iteration % 10 === 7 ? 'create' : iteration % 10 === 8 ? 'update' : 'action';
               active = { ...scenario, operation, table: operation === 'read' ? (scenario.readTable || 'SmallRows') : 'WriteRows' };
             }
-            const next = requestFor(active, fixture, { vu, iteration: offset + iteration++ });
+            const next = requestFor(active, fixture, { vu, iteration: offset + iteration++, clients: connections });
             expectedStatus = next.expectedStatus;
             return { ...request, method: next.method, path: next.path, headers: next.headers, body: next.body === undefined ? undefined : JSON.stringify(next.body) };
           },

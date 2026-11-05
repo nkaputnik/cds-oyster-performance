@@ -6,13 +6,13 @@ import { APP_ROOT } from './fixture.mjs';
 const delay = milliseconds => new Promise(done => setTimeout(done, milliseconds));
 
 export async function startServer(runtime, logDir, { entry = resolve(APP_ROOT, 'node_modules/@sap/cds/bin/serve.js'),
-  startupTimeoutMs = 30000, signal } = {}) {
+  startupTimeoutMs = 30000, signal, diagnostics = false } = {}) {
   signal?.throwIfAborted();
   await mkdir(logDir, { recursive: true });
   const stdoutPath = resolve(logDir, 'server.stdout.log'), stderrPath = resolve(logDir, 'server.stderr.log');
   const stdout = await open(stdoutPath, 'w'), stderr = await open(stderrPath, 'w');
   let child;
-  try { child = fork(entry, [], { cwd: runtime.root, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc'], execArgv: [] }); }
+  try { child = fork(entry, [], { cwd: runtime.root, env: { ...process.env, BENCHMARK_DIAGNOSTICS: diagnostics ? '1' : '0' }, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc'], execArgv: [] }); }
   finally { await stdout.close(); await stderr.close(); }
   const pending = new Map();
   let sequence = 0, exit = null, stopping;
@@ -71,7 +71,7 @@ export async function startServer(runtime, logDir, { entry = resolve(APP_ROOT, '
   finally { clearTimeout(timer); }
 }
 
-export async function executeCommand(executable, args, { cwd = APP_ROOT, env = {}, logPrefix, signal, timeoutMs = 180000, measureCpu = false } = {}) {
+export async function executeCommand(executable, args, { cwd = APP_ROOT, env = {}, logPrefix, signal, timeoutMs = 180000, measureCpu = false, input } = {}) {
   signal?.throwIfAborted();
   const stdoutPath = logPrefix + '.stdout.log', stderrPath = logPrefix + '.stderr.log';
   const stdout = await open(stdoutPath, 'w'), stderr = await open(stderrPath, 'w');
@@ -81,8 +81,9 @@ export async function executeCommand(executable, args, { cwd = APP_ROOT, env = {
   const grouped = process.platform !== 'win32';
   let child;
   try { child = spawn(timerExecutable || executable, timerExecutable ? ['-p', executable, ...args] : args,
-    { cwd, env: { ...process.env, ...env }, stdio: ['ignore', stdout.fd, stderr.fd], detached: grouped }); }
+    { cwd, env: { ...process.env, ...env }, stdio: [input === undefined ? 'ignore' : 'pipe', stdout.fd, stderr.fd], detached: grouped }); }
   finally { await stdout.close(); await stderr.close(); }
+  if (input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input); }
   return new Promise((done, reject) => {
     let terminationError, killTimer;
     const killOwned = exitSignal => {

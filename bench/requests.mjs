@@ -1,11 +1,13 @@
 const MAX_INTEGER = 2147483647;
-const CREATE_PARTITION = 10000000;
+const CREATE_PARTITION = 100000;
 
-function keyFor(fixture, table, vu, exclusive = false) {
+function keyFor(fixture, table, vu, exclusive = false, iteration = 0, clients = vu) {
   const ids = fixture.tables[table]?.ids;
-  if (!ids?.length) throw new Error('Missing generated fixture keys for ' + table);
-  if (exclusive && vu > ids.length) throw new Error('Insufficient fixture keys for the VU partition in ' + table);
-  return ids[(vu - 1) % ids.length];
+  if (!ids?.length) throw new Error('Missing CSV keys for ' + table);
+  const width = Math.floor(ids.length / clients);
+  if (!width && exclusive) throw new Error('Insufficient CSV keys for client partitions in ' + table);
+  if (!exclusive) return ids[(vu - 1 + iteration) % ids.length];
+  return ids[(vu - 1) * width + iteration % width];
 }
 
 export function readSpec(scenario, fixture, { vu = 1 } = {}) {
@@ -26,39 +28,59 @@ export function readSpec(scenario, fixture, { vu = 1 } = {}) {
   return spec;
 }
 
-export function requestFor(scenario, fixture, { vu = 1, iteration = 0 } = {}) {
+export function requestFor(scenario, fixture, { vu = 1, iteration = 0, clients = vu } = {}) {
   if (!Number.isSafeInteger(vu) || vu < 1) throw new Error('Invalid vu');
   if (!Number.isSafeInteger(iteration) || iteration < 0 || iteration >= CREATE_PARTITION)
-    throw new Error('Invalid iteration: allocation supports fewer than 10000000 iterations per VU');
+    throw new Error('Invalid iteration: allocation supports fewer than 100000 iterations per VU');
   const root = '/benchmark';
+  const route = endpoint(scenario);
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
   const request = (method, path, body, expectedStatus = 200) => ({ method, path: root + path, body, headers, expectedStatus });
-  const auxiliaryKeys = () => ({ lookupID: keyFor(fixture, 'LookupRows', vu),
-    effectID: keyFor(fixture, 'SideEffectRows', vu, scenario.mode.endsWith('write')) });
+  const auxiliaryKeys = () => ({ lookupID: keyFor(fixture, 'LookupRows', vu, false, iteration, clients),
+    effectID: keyFor(fixture, 'SideEffectRows', vu, true, iteration, clients) });
   if (scenario.operation === 'create') {
     const base = Math.max(0, fixture.tables.WriteRows.maxID) + 1000000;
-    const ID = base + vu * CREATE_PARTITION + iteration;
+    const ID = base + (fixture.createOffset || 0) + vu * CREATE_PARTITION + iteration;
     if (!Number.isSafeInteger(ID) || ID > MAX_INTEGER) throw new Error('Create key exceeds CDS Integer 32-bit range');
-    return request('POST', '/WriteRows', { ID, groupNo: 7, value: 7, text: 'benchmark', ...auxiliaryKeys() }, 201);
+    return request('POST', '/' + route.entity, { ID, groupNo: 7, value: 7, text: 'benchmark', ...auxiliaryKeys() }, 201);
   }
   if (scenario.operation === 'update')
-    return request('PATCH', '/WriteRows(' + keyFor(fixture, 'WriteRows', vu, true) + ')', { value: 7, ...auxiliaryKeys() });
+    return request('PATCH', '/' + route.entity + '(' + keyFor(fixture, 'WriteRows', vu, true, iteration, clients) + ')', { value: 7, ...auxiliaryKeys() });
   if (scenario.operation === 'read') {
     const spec = readSpec(scenario, fixture, { vu });
     const select = '$select=ID,groupNo,value,text,checksum';
-    if (spec.one) return request('GET', '/' + scenario.table + '(' + spec.ID + ')?' + select);
+    if (spec.one) return request('GET', '/' + route.entity + '(' + spec.ID + ')?' + select);
     let query = select + '&$orderby=ID&$top=' + spec.rows;
     if (spec.shape === 'range') query += '&$filter=' + encodeURIComponent('ID ge ' + spec.startID + ' and ID le ' + spec.endID);
     if (spec.shape === 'non-indexed') query += '&$filter=' + encodeURIComponent('groupNo eq ' + spec.groupNo);
     if (spec.shape === 'offset') query += '&$skip=' + spec.offset;
-    return request('GET', '/' + scenario.table + '?' + query);
+    return request('GET', '/' + route.entity + '?' + query);
   }
   if (scenario.operation === 'scan')
-    return request('POST', '/scan', { cursor: fixture.tables.LargeRows.minID - 1, count: scenario.scanRows, pageSize: scenario.pageSize });
+    return request('POST', '/' + route.action, { cursor: fixture.tables.LargeRows.minID - 1, count: scenario.scanRows, pageSize: scenario.pageSize, iterations: scenario.iterations });
   if (scenario.operation === 'action') {
-    if (!scenario.hook && !scenario.mode.includes('compute') && scenario.actionContract !== 'compute') return request('POST', '/noop', {}, 204);
-    return request('POST', '/compute', { seed: 7, iterations: scenario.iterations, calls: scenario.callbacks,
-      ...auxiliaryKeys() });
+    if (route.noop) return request('POST', '/' + route.action, {}, 204);
+    return request('POST', '/' + route.action, { seed: 7, iterations: scenario.iterations, calls: scenario.callbacks, ...auxiliaryKeys() });
   }
   throw new Error('Unknown operation: ' + scenario.operation);
+}
+
+const prefixes = {
+  'cap-baseline': 'NoHandler', 'oyster-idle': 'NoHandler',
+  'native-empty': 'NativeEmpty', 'wasm-empty': 'OysterEmpty',
+  'native-compute': 'NativeCalculation', 'wasm-compute': 'OysterCalculation',
+  'native-compute-read': 'NativeCqlRead', 'wasm-compute-read': 'OysterCqlRead',
+  'native-compute-write': 'NativeCqlWrite', 'wasm-compute-write': 'OysterCqlWrite',
+};
+export function endpoint(s) {
+  const prefix = prefixes[s.mode];
+  const variant = prefix[0].toLowerCase() + prefix.slice(1);
+  if (s.operation === 'scan') return { action: s.mode.startsWith('wasm-') ? 'oysterScan' : 'nativeScan' };
+  if (s.operation !== 'action') return { entity: prefix + s.table };
+  if (s.hookControl) return { action: s.hook ? 'extensionUnimplemented' : 'extensionBypass' };
+  if (s.hook) return { action: variant + 'Extension' };
+  if (s.access === 'db') return { action: s.mode.endsWith('-read') ? 'nativeDirectRead' : 'nativeDirectWrite' };
+  if (prefix === 'NoHandler') return { action: 'noop', noop: true };
+  if (s.mode.endsWith('-empty')) return { action: s.mode.startsWith('wasm-') ? 'oysterNoop' : 'nativeNoop', noop: true };
+  return { action: variant };
 }

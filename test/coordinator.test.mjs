@@ -31,7 +31,9 @@ test('short and long protocols cover every question within their timing budgets'
         assert.ok(cases.some(r => r.scenario.mode === mode), operation + ' ' + mode);
     }
     const allowance = runs.length * (settings.warmup + settings.duration + 5) + (settings.suite === 'long' ? 300 : 0);
-    assert.ok(allowance < settings.budgetSeconds, 'timing includes five seconds per test for deployment and checks');
+    assert.ok(allowance < settings.budgetSeconds, 'timing includes five seconds per test for checks');
+    const batches = runs.filter((run, i) => i === 0 || run.repetition !== runs[i - 1].repetition || (run.scenario.mode === 'cap-baseline') !== (runs[i - 1].scenario.mode === 'cap-baseline'));
+    assert.equal(batches.length, 2 * settings.repetitions);
   }
   assert.throws(() => parseArgs(['--suite', 'full']), /suite/);
   assert.throws(() => parseArgs(['--duration', '0']), /duration/);
@@ -70,23 +72,23 @@ test('exit before readiness reports the owned log and does not leave a child', a
   } finally { await rm(root, { force: true, recursive: true }); }
 });
 
-test('a failed cold invocation is recorded once and cannot proceed to warm measurement', async () => {
+test('a failed correctness preflight is recorded once and cannot proceed to warm measurement', async () => {
   const { executeRun, parseArgs } = await import('../bench/run.mjs');
   const { scenario } = await import('../bench/scenarios.mjs');
   const root = await mkdtemp(resolve(import.meta.dirname, '../.coordinator-test-'));
   const calls = [];
   const server = { state: { plugins: [], engine: null, annotations: [] }, runtime: { expectedHandlers: [] }, alive: true, url: 'http://127.0.0.1:1',
-    call: async type => { calls.push(type); throw new Error('cold failure'); } };
+    call: async type => { calls.push(type); throw new Error('preflight failure'); } };
   const fixture = { tables: {} };
   try {
     const results = await executeRun({ scenario: scenario(), repetition: 1, transport: 'http', load: { kind: 'vus', value: 1 } },
-      { server, fixture, settings: parseArgs(['--suite', 'short']), rawDir: root, prefix: 'test', signal: AbortSignal.abort(new Error('cold failure')) });
+      { server, fixture, settings: parseArgs(['--suite', 'short']), rawDir: root, prefix: 'test', signal: AbortSignal.abort(new Error('preflight failure')) });
     assert.deepEqual(calls, []);
     assert.equal(results.length, 1);
-    assert.equal(results[0].phase, 'cold');
-    assert.equal(results[0].stats.errors, 1);
+    assert.equal(results[0].phase, 'warm');
+    assert.equal(results[0].stats.errors, null);
     assert.equal(results[0].stats.meanMs, null);
-    assert.match(results[0].error, /cold failure/);
+    assert.match(results[0].error, /preflight failure/);
     assert.equal(results[0].validation.passed, false);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

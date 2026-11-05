@@ -98,7 +98,7 @@ test('all six questions cite measured native/Oyster CPU, CQL, loops and heavy-lo
   assert.doesNotMatch(answers, /Unanswered: no eligible/);
   assert.match(answers, /\+5 ms/);
   assert.match(report, /\+150 ms/);
-  assert.match(report, /Direct database/);
+  assert.match(report, /direct database/i);
   assert.match(report, /Declared extension points/);
   assert.match(report, /1,000-row table/);
   assert.match(report, /million-row table/);
@@ -150,4 +150,13 @@ test('all six original questions have measured answers for a complete protocol',
   assert.doesNotMatch(answers, /Not measured|Unanswered/);
   assert.match(report, /Extra callback cost/);
   assert.match(report, /\+8 ms/);
+});
+
+test('the heavy-load table retains both concurrency levels for the same workload', () => {
+  const results = [8, 32].map(value => ({ ...run('wasm-compute-read', value, { operation: 'action' }),
+    load: { kind: 'vus', value }, stats: { successes: 100, errors: 0, meanMs: value, p95Ms: value * 2, successfulRps: 100 / value } }));
+  const report = buildReport(manifest, results);
+  const loadTable = report.split('| Workload / execution |')[1].split('Throughput averages')[0];
+  assert.match(loadTable, /32 concurrent users/);
+  assert.match(loadTable, /8 concurrent users/);
 });

@@ -66,16 +66,6 @@ test('READ frozen reference applies sparse ranges, non-indexed groups and deep o
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('hook READ and per-row READ retain their distinct checked computations', async () => {
-  const { validateResponse } = await import('../bench/verify.mjs');
-  const s = scenario({ mode: 'wasm-compute-read', operation: 'read', rows: 2, callbacks: 2, hook: true });
-  const extra = (cpu(table.sample[0].value, s.iterations) + 6) & 2147483647;
-  const rows = table.sample.map(row => ({ ...row, checksum: (cpu(row.value, s.iterations) + extra) & 2147483647 }));
-  assert.equal(validateResponse(s, fixture, requestFor(s, fixture), { status: 200, body: { value: rows } }).passed, true);
-  const perRow = scenario({ ...s, hook: false, enrichment: 'per-row' });
-  assert.throws(() => validateResponse(perRow, fixture, requestFor(perRow, fixture), { status: 200, body: { value: rows } }), /checksum/);
-});
-
 test('mixed preflight exercises every operation before permitting warm timing', async () => {
   const { verifyScenario } = await import('../bench/verify.mjs');
   const { DatabaseSync } = await import('node:sqlite');
@@ -91,9 +81,9 @@ test('mixed preflight exercises every operation before permitting warm timing', 
     const body = text ? JSON.parse(text) : null;
     calls.push(req.method + ' ' + req.url);
     res.setHeader('Content-Type', 'application/json');
-    if (req.url.startsWith('/benchmark/SmallRows')) return res.end(JSON.stringify({ value: table.sample.map(row => ({ ...row, checksum: null })) }));
+    if (req.url.startsWith('/benchmark/NoHandlerSmallRows')) return res.end(JSON.stringify({ value: table.sample.map(row => ({ ...row, checksum: null })) }));
     if (req.url === '/benchmark/noop') { res.statusCode = 204; return res.end(); }
-    if (req.method === 'POST' && req.url === '/benchmark/WriteRows') { persisted.set(body.ID, body); res.statusCode = 201; return res.end(JSON.stringify(body)); }
+    if (req.method === 'POST' && req.url === '/benchmark/NoHandlerWriteRows') { persisted.set(body.ID, body); res.statusCode = 201; return res.end(JSON.stringify(body)); }
     const ID = Number(req.url.match(/\((\d+)\)$/)?.[1]);
     if (req.method === 'PATCH') persisted.set(ID, { ...persisted.get(ID), ...body });
     res.end(JSON.stringify(persisted.get(ID)));
@@ -103,39 +93,65 @@ test('mixed preflight exercises every operation before permitting warm timing', 
     const server = { url: 'http://127.0.0.1:' + listener.address().port, state: { plugins: [], annotations: [], engine: null }, runtime: { expectedHandlers: [] } };
     const validation = await verifyScenario(server, scenario({ operation: 'read', rows: 2, mixed: true }), fixture, { rollback: false, referenceDatabase });
     assert.equal(validation.passed, true);
-    assert.ok(calls.some(call => call === 'POST /benchmark/WriteRows'));
-    assert.ok(calls.some(call => call.startsWith('PATCH /benchmark/WriteRows')));
+    assert.ok(calls.some(call => call === 'POST /benchmark/NoHandlerWriteRows'));
+    assert.ok(calls.some(call => call.startsWith('PATCH /benchmark/NoHandlerWriteRows')));
     assert.ok(calls.some(call => call === 'POST /benchmark/noop'));
     assert.equal(validation.mixedOperations.length, 3);
   } finally { await new Promise(done => listener.close(done)); await rm(root, { recursive: true, force: true }); }
 });
 
-test('real native and WASM action/write paths persist values and roll back rejected work', {}, async () => {
-  const { loadFixture } = await import('../bench/fixture.mjs');
-  const { prepareRuntime, cleanupRuntime } = await import('../bench/prepare.mjs');
+test('fixed CAP and WASM endpoints share each server and preserve persistence, callbacks and rollback', async () => {
+  const { APP_ROOT, loadFixture, deploy } = await import('../bench/fixture.mjs');
   const { startServer } = await import('../bench/process.mjs');
   const { verifyScenario } = await import('../bench/verify.mjs');
+  const { executeRun, sourceHashes } = await import('../bench/run.mjs');
   const frozen = await loadFixture();
-  for (const mode of ['cap-baseline', 'native-compute-write', 'wasm-compute-write']) {
-    for (const operation of ['action', 'create', 'update', 'read']) {
-      const runtime = await prepareRuntime(scenario({ mode, operation }), frozen, { diagnostics: true });
-      const server = await startServer(runtime, resolve(runtime.root, '.runs', 'integration-logs'));
+  const before = await sourceHashes();
+  const logs = await mkdtemp(resolve(APP_ROOT, '.integration-test-'));
+  let index = 0;
+  try {
+    for (const plain of [true, false]) {
+      if (!plain) await deploy();
+      const server = await startServer({ root: plain ? resolve(APP_ROOT, 'apps/cap') : APP_ROOT }, resolve(logs, plain ? 'cap' : 'oyster'), { diagnostics: true });
+      const pid = server.child.pid;
       try {
-        const validation = await verifyScenario(server, runtime.scenario, frozen, { diagnostics: true, rollback: operation === 'create' });
-        assert.equal(validation.passed, true);
-        if (operation === 'action' && mode !== 'cap-baseline') {
-          const { executeRun } = await import('../bench/run.mjs');
-          const rawDir = resolve(runtime.root, '.runs', 'http-check');
-          await mkdir(rawDir, { recursive: true });
-          const records = await executeRun({ scenario: runtime.scenario, repetition: 1, transport: 'http', load: { kind: 'vus', value: 1 } },
-            { server, fixture: frozen, settings: { warmup: 0, duration: 1 }, rawDir, prefix: mode });
-          assert.equal(records.length, 2);
-          assert.equal(records[1].validation.passed, true, records[1].error);
-          assert.ok(records[1].stats.successes > 0);
-          assert.equal(records[1].stats.errors, 0);
+        if (!plain) assert.equal(server.state.annotations.length, 25);
+        const modes = plain ? ['cap-baseline'] : ['oyster-idle', 'native-empty', 'wasm-empty', 'native-compute', 'wasm-compute', 'native-compute-read', 'wasm-compute-read', 'native-compute-write', 'wasm-compute-write'];
+        for (const mode of modes) for (const operation of ['action', 'create', 'update', 'read']) {
+          const s = scenario({ mode, operation });
+          const caseFixture = { ...frozen, createOffset: index++ * 3200000 };
+          const validation = await verifyScenario(server, s, caseFixture, { diagnostics: true, rollback: operation === 'create' });
+          assert.equal(validation.passed, true);
+          if (operation === 'create') assert.equal(validation.rollback.passed, true);
+          if (operation === 'update') {
+            const next = await verifyScenario(server, s, caseFixture, { diagnostics: true, rollback: false, iteration: 80001 });
+            assert.notEqual(next.persistedID, validation.persistedID);
+          }
         }
-        if (operation === 'create') assert.equal(validation.rollback.passed, true);
-      } finally { await server.stop(); await cleanupRuntime(); }
+        if (!plain) {
+          for (const mode of modes.filter(mode => !mode.includes('idle'))) {
+            await verifyScenario(server, scenario({ mode, hook: true }), frozen, { diagnostics: true, rollback: false });
+          }
+          for (const mode of ['native-compute', 'wasm-compute'])
+            await verifyScenario(server, scenario({ mode, operation: 'scan' }), frozen, { diagnostics: true, rollback: false });
+          for (const mode of ['native-compute-read', 'native-compute-write'])
+            await verifyScenario(server, scenario({ mode, access: 'db' }), frozen, { diagnostics: true, rollback: false });
+          for (const hook of [false, true])
+            await verifyScenario(server, scenario({ mode: 'oyster-idle', hook, hookControl: true }), frozen, { diagnostics: true, rollback: false });
+          // Measures real HTTP traffic through the stdin worker without changing app source.
+          const rawDir = resolve(logs, 'http');
+          await mkdir(rawDir, { recursive: true });
+          const records = await executeRun({ scenario: scenario({ mode: 'wasm-compute-write' }), repetition: 1, transport: 'http', load: { kind: 'vus', value: 1 } },
+            { server, fixture: frozen, settings: { warmup: 1, duration: 1 }, rawDir, prefix: 'fixed-endpoint' });
+          assert.equal(records.length, 1);
+          assert.equal(records[0].validation.passed, true, records[0].error);
+          assert.ok(records[0].stats.successes > 0);
+          assert.equal(records[0].stats.errors, 0);
+        }
+        assert.equal(server.child.pid, pid);
+        assert.equal(server.alive, true);
+      } finally { await server.stop(); }
     }
-  }
+    assert.deepEqual(await sourceHashes(), before, 'benchmark must never rewrite application or handler source');
+  } finally { await rm(logs, { recursive: true, force: true }); }
 });

@@ -5,6 +5,3 @@ db/*.sqlite*
 package-lock.json
 *.log
 .DS_Store
-**/benchmark.json
-**/srv/BenchmarkService/
-**/srv/BenchmarkExtensionService/
