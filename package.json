@@ -1,0 +1,56 @@
+{
+  "name": "cds-oyster-performance",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@sap/cds": "latest",
+    "@sap/cds-mtxs": "latest",
+    "@sap/cds-oyster": "latest",
+    "@cap-js/sqlite": "latest"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "deploy": "cds deploy --to sqlite:db/benchmark.sqlite",
+    "benchmark": "node bench/run.mjs --suite short",
+    "benchmark:long": "node bench/run.mjs --suite long",
+    "test": "node --test test/*.test.mjs",
+    "verify": "node bench/verify.mjs",
+    "report": "node bench/reports.mjs"
+  },
+  "private": true,
+  "extends": "oyster-benchmark-base",
+  "workspaces": [
+    ".base"
+  ],
+  "cds": {
+    "server": {
+      "port": 4006
+    },
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "url": "db/benchmark.sqlite"
+        }
+      },
+      "code-extensibility": {
+        "sandbox": "wasm"
+      }
+    },
+    "query": {
+      "limit": {
+        "default": 1000,
+        "max": 10000
+      }
+    }
+  },
+  "devDependencies": {
+    "@sap/cds-dk": "latest",
+    "@cap-js/cds-test": "latest",
+    "autocannon": "latest"
+  },
+  "description": "Focused local CAP and Oyster performance comparisons",
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
