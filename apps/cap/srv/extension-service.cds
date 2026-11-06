@@ -5,6 +5,10 @@ using { perf } from 'oyster-benchmark-base';
 service BenchmarkExtensionService {
   entity LookupRows as projection on perf.LookupRows;
   entity SideEffectRows as projection on perf.SideEffectRows;
+  action nativeValidation(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action nativeValidationRead(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action oysterValidation(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action oysterValidationRead(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
   action nativeEmpty(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;
   action nativeCalculation(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;
   action nativeCqlRead(seed: Integer, iterations: Integer, calls: Integer, lookupID: Integer, effectID: Integer) returns Integer;

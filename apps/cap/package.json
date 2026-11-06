@@ -1,6 +1,5 @@
 {
   "version": "1.0.0",
-  "type": "module",
   "private": true,
   "extends": "oyster-benchmark-base",
   "cds": {

@@ -1,12 +1,13 @@
-import cds from '@sap/cds';
-import { cpu, executeWork } from '../lib/workload.mjs';
+const cds = require('@sap/cds');
+const { cpu, executeWork } = require('../lib/workload.js');
+const { validateAmount } = require('../lib/validation.js');
 
-export function workInput(data = {}) {
+function workInput(data = {}) {
   return { seed: data.seed ?? data.value ?? 7, iterations: data.iterations ?? 100, calls: data.calls ?? 1,
     lookupID: data.lookupID, effectID: data.effectID };
 }
 
-export function nativeIO(srv, kind, access = 'service') {
+function nativeIO(srv, kind, access = 'service') {
   const { SELECT, UPDATE } = cds.ql;
   const runner = access === 'db' ? cds.db : srv;
   const lookup = access === 'db' ? 'perf.LookupRows' : srv.entities.LookupRows;
@@ -26,16 +27,20 @@ export function nativeIO(srv, kind, access = 'service') {
   };
 }
 
-export default class BenchmarkService extends cds.ApplicationService {
+class BenchmarkService extends cds.ApplicationService {
   async init() {
     const readIO = nativeIO(this, 'read'), writeIO = nativeIO(this, 'write');
+    for (const [kind, readLimit] of [['Validation', false], ['ValidationRead', true]]) {
+      this.before(['CREATE', 'UPDATE'], 'Native' + kind + 'WriteRows', req => validateAmount(this, req, readLimit));
+      this.on('native' + kind, req => validateAmount(this, req, readLimit));
+    }
     this.on('noop', () => undefined);
     this.on('nativeNoop', () => undefined);
     this.on('probe', () => 1);
     this.before(['CREATE', 'UPDATE'], 'NativeEmptyWriteRows', () => {});
     this.before(['CREATE', 'UPDATE'], 'NativeCalculationWriteRows', req => { req.data.value = cpu(req.data.value ?? 7, 100); });
-    this.before(['CREATE', 'UPDATE'], 'NativeCqlReadWriteRows', async req => { req.data.value = await executeWork(workInput(req.data), readIO); });
-    this.before(['CREATE', 'UPDATE'], 'NativeCqlWriteWriteRows', async req => { req.data.value = await executeWork(workInput(req.data), writeIO); });
+    this.before(['CREATE', 'UPDATE'], 'NativeCqlReadWriteRows', async req => { req.data.value = await executeWork({ ...workInput(req.data), iterations: 0 }, readIO); });
+    this.before(['CREATE', 'UPDATE'], 'NativeCqlWriteWriteRows', async req => { req.data.value = await executeWork({ ...workInput(req.data), iterations: 0 }, writeIO); });
     this.after('READ', ['NativeEmptySmallRows', 'NativeEmptyLargeRows'], () => {});
     this.after('READ', ['NativeCalculationSmallRows', 'NativeCalculationLargeRows'], rows => {
       for (const row of Array.isArray(rows) ? rows : [rows]) if (row) row.checksum = cpu(row.value, 100);
@@ -43,7 +48,7 @@ export default class BenchmarkService extends cds.ApplicationService {
     for (const [prefix, io] of [['NativeCqlRead', readIO], ['NativeCqlWrite', writeIO]]) {
       this.after('READ', [prefix + 'SmallRows', prefix + 'LargeRows'], async rows => {
         const extra = await executeWork({ seed: 0, iterations: 0, calls: 1 }, io);
-        for (const row of Array.isArray(rows) ? rows : [rows]) if (row) row.checksum = (cpu(row.value, 100) + extra) & 2147483647;
+        for (const row of Array.isArray(rows) ? rows : [rows]) if (row) row.checksum = (row.value + extra) & 2147483647;
       });
     }
     this.on('nativeCalculation', req => cpu(req.data.seed, req.data.iterations));
@@ -68,7 +73,7 @@ export default class BenchmarkService extends cds.ApplicationService {
       for (const row of rows) value = (value + row.value) & 2147483647;
       return value;
     });
-    for (const prefix of ['native', 'oyster']) for (const kind of ['Empty', 'Calculation', 'CqlRead', 'CqlWrite']) {
+    for (const prefix of ['native', 'oyster']) for (const kind of ['Empty', 'Calculation', 'CqlRead', 'CqlWrite', 'Validation', 'ValidationRead']) {
       this.on(prefix + kind + 'Extension', async req => {
         const extension = await cds.connect.to('BenchmarkExtensionService');
         return extension[prefix + kind](req.data);
@@ -92,10 +97,14 @@ export default class BenchmarkService extends cds.ApplicationService {
     });
     this.on('rollbackProbe', async req => {
       await this.run(cds.ql.INSERT.into(this.entities[req.data.entity]).entries({ ID: req.data.ID, value: 7,
-        effectID: req.data.effectID, lookupID: (await this.run(cds.ql.SELECT.one.from(this.entities.LookupRows).columns('ID').orderBy('ID'))).ID }));
+        quantity: 2, unitPrice: 10, effectID: req.data.effectID, lookupID: (await this.run(cds.ql.SELECT.one.from(this.entities.LookupRows).columns('ID').orderBy('ID'))).ID }));
       await this.run(cds.ql.UPDATE.entity(this.entities.SideEffectRows).set({ value: req.data.value }).where({ ID: req.data.effectID }));
       req.reject(409, 'Deliberate rollback probe');
     });
     return super.init();
   }
 }
+
+module.exports = BenchmarkService;
+module.exports.workInput = workInput;
+module.exports.nativeIO = nativeIO;

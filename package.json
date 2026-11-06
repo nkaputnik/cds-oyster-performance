@@ -1,7 +1,6 @@
 {
   "name": "cds-oyster-performance",
   "version": "1.0.0",
-  "type": "module",
   "dependencies": {
     "@sap/cds": "latest",
     "@sap/cds-mtxs": "latest",
@@ -11,11 +10,11 @@
   "scripts": {
     "start": "cds-serve",
     "deploy": "cds deploy --to sqlite:db/benchmark.sqlite",
-    "benchmark": "node bench/run.mjs --suite short",
-    "benchmark:long": "node bench/run.mjs --suite long",
-    "test": "node --test test/*.test.mjs",
-    "verify": "node bench/verify.mjs",
-    "report": "node bench/reports.mjs"
+    "benchmark": "node bench/run.js --suite short",
+    "benchmark:long": "node bench/run.js --suite long",
+    "test": "node --test test/*.test.js",
+    "verify": "node bench/verify.js",
+    "report": "node bench/reports.js"
   },
   "private": true,
   "extends": "oyster-benchmark-base",

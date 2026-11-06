@@ -9,6 +9,6 @@ aspect TechnicalRow {
 
 entity SmallRows : TechnicalRow {};
 entity LargeRows : TechnicalRow {};
-entity WriteRows : TechnicalRow { lookupID : Integer; effectID : Integer; };
-entity LookupRows : TechnicalRow {};
+entity WriteRows : TechnicalRow { lookupID : Integer; effectID : Integer; quantity : Integer default 1; unitPrice : Integer default 1; };
+entity LookupRows : TechnicalRow { limit : Integer default 1000; };
 entity SideEffectRows : TechnicalRow {};

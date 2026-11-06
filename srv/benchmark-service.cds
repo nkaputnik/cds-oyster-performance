@@ -59,6 +59,25 @@ service BenchmarkService {
   entity LookupRows as projection on perf.LookupRows;
   entity SideEffectRows as projection on perf.SideEffectRows;
 
+  @extensible.code
+  entity NativeValidationWriteRows as projection on perf.WriteRows;
+  @extensible.code
+  entity OysterValidationWriteRows as projection on perf.WriteRows;
+  @extensible.code
+  entity NativeValidationReadWriteRows as projection on perf.WriteRows;
+  @extensible.code
+  entity OysterValidationReadWriteRows as projection on perf.WriteRows;
+  action nativeValidation(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action nativeValidationExtension(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action nativeValidationRead(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action nativeValidationReadExtension(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  @extensible.code
+  action oysterValidation(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action oysterValidationExtension(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  @extensible.code
+  action oysterValidationRead(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+  action oysterValidationReadExtension(quantity: Integer, unitPrice: Integer, lookupID: Integer) returns Integer;
+
   action noop();
   action nativeNoop();
   @extensible.code

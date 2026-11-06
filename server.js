@@ -1,9 +1,7 @@
-import cds from '@sap/cds';
-import { createRequire } from 'node:module';
-import { ResourceSampler } from './bench/resources.mjs';
-import { installCallbackDiagnostics } from './lib/diagnostics.mjs';
+const cds = require('@sap/cds');
+const { ResourceSampler } = require('./bench/resources.js');
+const { installCallbackDiagnostics } = require('./lib/diagnostics.js');
 
-const require = createRequire(import.meta.url);
 const sampler = new ResourceSampler();
 const diagnostics = process.env.BENCHMARK_DIAGNOSTICS === '1';
 const queries = [];
@@ -14,7 +12,7 @@ function state() {
   const profile = plugins.includes('@sap/cds-oyster') ? require('@sap/cds-oyster/lib/profile') : null;
   return { plugins, engine: profile?.getEngine().name ?? null, limits: profile?.getOysterLimits() ?? null, annotations };
 }
-export default async function serve(options) {
+async function serve(options) {
   const server = await cds.server(options);
   // Oyster compiles all checked-in handlers during startup.
   if (state().engine) {
@@ -43,3 +41,5 @@ export default async function serve(options) {
   process.send?.({ type: 'ready', url: 'http://127.0.0.1:' + server.address().port, state: state() });
   return server;
 }
+
+module.exports = serve;
