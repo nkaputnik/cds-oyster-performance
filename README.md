@@ -43,6 +43,8 @@ The complete short test run on 2026-11-05 finished in **about 8¾ minutes**, wit
 
 ## Review the result
 
+Latest examples from November 6, 2026: [short run](examples/short-run-2026-11-06/report.md) and [long run](examples/long-run-2026-11-06/report.md). Both use the current business constraint cases and report wording. Each example includes source snapshots of the linked handlers. The long run includes three independent repetitions and verified processing of the complete million-row table.
+
 Reference reports show the analysis and charts from a [short run](examples/short-run/report.md) and a [long run](examples/long-run/report.md). The long run completed with 16 missing HTTP measurement summaries, which its report identifies and excludes from comparisons.
 
 The terminal prints the path to `reports/bench-<timestamp>/report.md`. Open it in a Markdown preview with Mermaid support. Each test run creates a new directory. To view the report on GitHub, upload the result directory separately.
