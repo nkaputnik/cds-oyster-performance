@@ -1,0 +1,68 @@
+{
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.mtcallback",
+      "description": "Subscription via SaaS Registry",
+      "grant-as-authority-to-apps": [
+        "$XSAPPNAME(application,sap-provisioning,tenant-onboarding)"
+      ]
+    },
+    {
+      "name": "$XSAPPNAME.cds.ExtensionDeveloper",
+      "description": "Extend CAP applications via extension projects"
+    },
+    {
+      "name": "$XSAPPNAME.BenchmarkRecorder",
+      "description": "BenchmarkRecorder"
+    },
+    {
+      "name": "$XSAPPNAME.BenchmarkRunner",
+      "description": "Run authenticated tenant benchmark requests"
+    },
+    {
+      "name": "$XSAPPNAME.BenchmarkAdministrator",
+      "description": "BenchmarkAdministrator"
+    }
+  ],
+  "attributes": [],
+  "role-templates": [
+    {
+      "name": "ExtensionDeveloper",
+      "description": "Extend CAP applications via extension projects",
+      "scope-references": [
+        "$XSAPPNAME.cds.ExtensionDeveloper"
+      ]
+    },
+    {
+      "name": "BenchmarkRunner",
+      "description": "Run authenticated tenant benchmark requests",
+      "scope-references": [
+        "$XSAPPNAME.BenchmarkRunner"
+      ],
+      "attribute-references": []
+    },
+    {
+      "name": "BenchmarkRecorder",
+      "description": "generated",
+      "scope-references": [
+        "$XSAPPNAME.BenchmarkRecorder"
+      ],
+      "attribute-references": []
+    },
+    {
+      "name": "BenchmarkAdministrator",
+      "description": "generated",
+      "scope-references": [
+        "$XSAPPNAME.BenchmarkAdministrator"
+      ],
+      "attribute-references": []
+    }
+  ],
+  "authorities-inheritance": false,
+  "authorities": [
+    "$XSAPPNAME.cds.ExtensionDeveloper",
+    "$XSAPPNAME.BenchmarkRunner",
+    "$XSAPPNAME.BenchmarkRecorder",
+    "$XSAPPNAME.BenchmarkAdministrator"
+  ]
+}

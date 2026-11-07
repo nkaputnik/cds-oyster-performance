@@ -285,6 +285,7 @@ function charts(results) {
 }
 
 function answers(manifest, results, findings, callbacks) {
+  const cloud = manifest.environment?.execution === 'cloud';
   const matched = (questions, rows = findings) => rows.filter(row => row.n && questions.includes(row.question));
   const describe = rows => rows.length ? rows.map(row => `${row.id}: ${row.question}, ${display(row.mean)} ms`
     + `${finite(row.percent) ? ` (${display(row.percent)}%)` : ' (percentage unavailable)'}, n=${row.n}`).join('; ')
@@ -311,7 +312,7 @@ function answers(manifest, results, findings, callbacks) {
   const rows = [
     ['CAP custom logic with and without DB', `Native empty-handler controls: ${describe(nativeEmpty)} Native incremental service IO: ${describe(nativeIo)} Native CPU controls: ${describe(nativeCpu)} Primary DB-backed operations are identified in the matched workload; auxiliary IO increments include service dispatch, query execution and transaction work. The computation execution-location rows compare native and WASM logic without auxiliary IO.`],
     ['Execution in Oyster', `${describe(execution)} The empty-handler comparison covers the sandbox execution path; the computation comparison covers equivalent loop parameters in native and WASM handlers.`],
-    ['Net Oyster overhead', `${describe(net)} Each delta uses the stated baseline and complete request boundary. Installed-plugin, empty-sandbox, IO-path and hook-routing deltas are separate empirical comparisons and cannot be added as isolated component costs.`],
+    ['Net Oyster overhead', `${describe(net)} Each delta uses the stated baseline and complete request boundary. ${cloud ? 'Empty-sandbox, IO-path and hook-routing' : 'Installed-plugin, empty-sandbox, IO-path and hook-routing'} deltas are separate empirical comparisons and cannot be added as isolated component costs.`],
     ['Callbacks versus native CQL', `${describe(callbackRows)} Callback-attribution percentages use native incremental IO as their denominator. The four-mode difference-of-differences is an empirical path comparison; query construction, validation, serialization, service/DB execution and interactions may contribute. Native service versus database controls: ${describe(matched(["Native service versus database read", "Native service versus database write"]))}`],
     ['Large-result loops', loopSweeps.length ? `${describeSweep(loopSweeps)} See the identified scaling tables for all intermediate values, repetition counts and the fixed workload. Returned-row, scan-row and computation-iteration sweeps answer different loop questions; a missing dimension remains unanswered.` : 'Unanswered: no eligible returned-row, scan-row or computation-iteration sweeps with other workload dimensions fixed.'],
     ['Heavy-load behavior', loadSweeps.length ? `${describeSweep(loadSweeps)} ${arrival.length ? 'Scheduled-arrival observations are recorded.' : 'Capacity is unanswered: no matched scheduled-arrival sweep.'} ${arrivalClientCpu ? 'Client CPU is recorded for these arrival observations.' : 'Generator saturation is unverified because scheduled-arrival client CPU evidence is missing.'} ${failedLoad.length} warm load runs record errors or dropped starts; consult the failure table. CPU isolation is unverified.` : 'Unanswered: no eligible load sweep with all non-load workload dimensions and load kind fixed. Capacity, generator saturation and CPU isolation are unverified.'],
@@ -395,16 +396,20 @@ sequenceDiagram
 \`\`\``;
 
 function buildDetailedReport(manifest = {}, results = []) {
+  const cloud = manifest.environment?.execution === 'cloud';
+  const compact = manifest.reporting?.compact;
+  // Legacy archives retain their uploaded source path; compact reports supply reporting.sourceRoot.
+  if (cloud) results = results.map(result => ({ ...result, scenario: { ...result.scenario, sourceRoot: manifest.reporting?.sourceRoot || 'sources/extensions/benchmark/srv/' } }));
   const manifestIssues = validationIssues(manifest.validation);
   const performanceResults = manifestIssues.length ? [] : results;
-  const findingRows = findingEvidence(performanceResults);
+  const findingRows = findingEvidence(performanceResults).filter(row => !cloud || (!row.comparison.includes('cap-baseline') && row.question !== 'Installed plugin overhead'));
   const callbackRows = callbackEvidence(performanceResults);
   const directCallbackRows = directCallbackEvidence(performanceResults);
   const allGroups = groups(results, { mode: true });
-  const latencyRows = results.map(result => [runLabel(result), modeReference(result.scenario), workload(result),
-    ...statFields.map(name => result.stats?.[name]), result.scenario?.expectedCallbacks, result.rawFile || unavailable]);
-  const latency = table(['Run', 'Mode', 'Workload', 'Samples', 'Successes', 'Accepted requests', 'Expected rejections', 'Errors', 'Dropped starts', 'p50 (ms)', 'p95 (ms)', 'p99 (ms)', 'Mean (ms)',
-    'Successful requests/s', 'Offered requests/s', 'Completed requests/s', 'Elapsed (s)', 'Sample cap reached', 'Expected callbacks', 'Raw file'], latencyRows);
+  const latencyRows = results.map(result => [runLabel(result) + (result.scenario.mixed ? ' (mixed traffic)' : ''), modeReference(result.scenario), ...(compact ? [] : [workload(result)]),
+    ...statFields.map(name => result.stats?.[name]), result.scenario?.expectedCallbacks, ...(compact ? [] : [result.rawFile || unavailable])]);
+  const latency = table(['Run', 'Mode', ...(compact ? [] : ['Workload']), 'Samples', 'Successes', 'Accepted requests', 'Expected rejections', 'Errors', 'Dropped starts', 'p50 (ms)', 'p95 (ms)', 'p99 (ms)', 'Mean (ms)',
+    'Successful requests/s', 'Offered requests/s', 'Completed requests/s', 'Elapsed (s)', 'Sample cap reached', 'Expected callbacks', ...(compact ? [] : ['Raw file'])], latencyRows);
   const resourceRows = results.map(result => [runLabel(result), modeReference(result.scenario), ...resourceFields.map(name => result.resources?.[name])]);
   const variabilityRows = allGroups.map(group => {
     const validGroup = manifestIssues.length ? [] : group;
@@ -422,6 +427,7 @@ function buildDetailedReport(manifest = {}, results = []) {
   const rawLinks = [...new Set(results.map(result => result.rawFile).filter(Boolean))].map(path => link(path, path)).join(', ');
   const report = [
     `# Oyster performance report: ${cell(manifest.id)}`,
+    ...(cloud && manifest.environment.network?.mode === 'cf-router' ? ['Requests travel from the CF runner through the CF router over HTTPS to the provider. End-to-end measurements include TLS and CF router costs; native and Oyster pairs share this path. These measurements do not isolate handler costs at microsecond precision.'] : []),
     results.length ? `${results.length} measured runs are recorded. Tables retain all observations; findings and charts exclude failed, skipped, blocked and limit-probe runs.` : 'No measured runs are recorded. Performance questions remain unanswered.',
     '## Findings',
     evidenceTable(findingRows),
@@ -444,7 +450,8 @@ function buildDetailedReport(manifest = {}, results = []) {
     results.some(result => finite(result.wholeScanElapsedSeconds)) ? table(['Whole scan run', 'Mode', 'Whole rows', 'Bounded invocations', 'Whole elapsed (s)'],
       results.filter(result => finite(result.wholeScanElapsedSeconds)).map(result => [runLabel(result), modeReference(result.scenario), result.scenario?.wholeScanRows, result.stats?.samples, result.wholeScanElapsedSeconds])) : '',
     table(['Run', 'Mode', 'Server CPU (%)', 'Peak RSS (MiB)', 'Event-loop p99 (ms)', 'GC count', 'GC time (ms)', 'Client CPU (%)'], resourceRows),
-    'Client CPU is necessary to assess generator saturation. Unavailable client CPU or missing scheduled-arrival sweeps leave the capacity question unanswered. SQLite write serialization and client/server competition on the same host can affect results.',
+    cloud ? table(['Run', 'Generator CPU (%)', 'Generator peak RSS (MiB)', 'Generator event-loop p99 (ms)'], results.map(result => [runLabel(result), result.generatorResources?.cpuPercent, result.generatorResources?.rssPeakMiB, result.generatorResources?.eventLoopP99Ms])) : '',
+    cloud ? 'Provider and generator samples belong to separate CF containers. CPU, RSS and event-loop evidence are needed to assess generator saturation. Missing HANA server diagnostics and scheduled-arrival sweeps leave database attribution and arrival-rate capacity unanswered.' : 'Client CPU is necessary to assess generator saturation. Unavailable client CPU or missing scheduled-arrival sweeps leave the capacity question unanswered. SQLite write serialization and client/server competition on the same host can affect results.',
     '## Measured charts',
     charts(performanceResults),
     'Charts use a single basic Mermaid series with category mappings in the adjacent tables. Values are means of eligible independent run metrics. Missing or failed observations are omitted. No illustrative measurements are included. Scaling and fan-out conclusions require multiple values with every other workload dimension fixed; load sweeps also preserve the load kind. Missing sweeps leave those questions unanswered.',
@@ -454,7 +461,8 @@ function buildDetailedReport(manifest = {}, results = []) {
     '## Handler and correctness validation',
     table(['Manifest validation check', 'Recorded value'], entries(manifest.validation)),
     manifestIssues.length ? `Manifest validation failed (${cell(manifestIssues.join('; '))}); no runs support performance findings or charts.` : 'No explicit manifest-wide validation failure is recorded.',
-    probeRows.length ? table(['Run', 'Probe field', 'Recorded value'], probeRows) : 'No per-run handler or correctness probes are recorded; continued handler execution and unrelated-request impact are unverified.',
+    compact && probeRows.length ? table(['Run', 'Correctness and rollback checks', 'Load probe'], results.map(result => [runLabel(result), result.validation, result.probe]))
+      : probeRows.length ? table(['Run', 'Probe field', 'Recorded value'], probeRows) : 'No per-run handler or correctness probes are recorded; continued handler execution and unrelated-request impact are unverified.',
     'Validation and handler execution must be checked before interpreting timing. Skipped, blocked or explicitly invalid handler probes are excluded from findings and successful charts. Probe latency alone does not prove handler correctness. Query-count, result correctness, rollback and side-effect checks are established only by the recorded validation evidence.',
     '## Reproduction metadata',
     manifest.runSummary ? table(['Run completion field', 'Recorded value'], entries(manifest.runSummary)) : '',
@@ -473,6 +481,7 @@ function buildDetailedReport(manifest = {}, results = []) {
 }
 
 function buildReport(manifest = {}, results = []) {
+  if (manifest.environment?.execution === 'cloud') results = results.map(result => ({ ...result, scenario: { ...result.scenario, sourceRoot: manifest.reporting?.sourceRoot || 'sources/extensions/benchmark/srv/' } }));
   return buildHumanReport(manifest, results, { groups, tuples, eligible, lowLoad, fanoutEvidence, validationIssues, summarize });
 }
 const renderReport = buildReport;
@@ -512,4 +521,4 @@ async function writeMarkdownReports(outputDir, manifest, results) {
   return reportPath;
 }
 
-module.exports = { buildDetailedReport, buildReport, renderReport, writeReport, writeMarkdownReports };
+module.exports = { buildDetailedReport, buildReport, renderReport, writeReport, writeMarkdownReports, key, eligible, summarize };

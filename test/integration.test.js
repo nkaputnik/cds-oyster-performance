@@ -1,11 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { resolve } = require('node:path');
+const { homedir } = require('node:os');
 const { scenario } = require('../bench/scenarios.js');
 const { requestFor } = require('../bench/requests.js');
-const { cpu } = require('../lib/workload.js');
+const { cpu } = require('../apps/provider/srv/lib/workload.js');
 const http = require('node:http');
 const { mkdtemp, mkdir, rm } = require('node:fs/promises');
+
+const scratch = resolve(homedir(), 'git/clean-room/cds-oyster-performance-tests');
+test.before(() => mkdir(scratch, { recursive: true }));
 
 const table = { count: 1000, minID: 1, maxID: 1000, ids: [1, 2], sample: [{ ID: 1, groupNo: 4, value: 3, text: 'fixture' }, { ID: 2, groupNo: 8, value: 5, text: 'fixture2' }] };
 const fixture = { tables: Object.fromEntries(['SmallRows', 'LargeRows', 'WriteRows', 'LookupRows', 'SideEffectRows'].map(name => [name, table])) };
@@ -52,7 +56,7 @@ test('READ query correctness accepts key objects and checks range, filter and of
 test('READ frozen reference applies sparse ranges, non-indexed groups and deep offsets outside the sandbox', async () => {
   const { readReference } = require('../bench/verify.js');
   const { DatabaseSync } = require('node:sqlite');
-  const root = await mkdtemp(resolve(__dirname, '../.read-reference-test-'));
+  const root = await mkdtemp(resolve(scratch, 'read-reference-test-'));
   const database = resolve(root, 'fixture.sqlite');
   const db = new DatabaseSync(database);
   db.exec('CREATE TABLE perf_SmallRows (ID INTEGER PRIMARY KEY, groupNo INTEGER, value INTEGER, text TEXT); INSERT INTO perf_SmallRows VALUES (11,7,2,\'a\'),(37,3,8,\'b\'),(99,7,4,\'c\')');
@@ -69,7 +73,7 @@ test('READ frozen reference applies sparse ranges, non-indexed groups and deep o
 test('mixed preflight exercises every operation before permitting warm timing', async t => {
   const { verifyScenario } = require('../bench/verify.js');
   const { DatabaseSync } = require('node:sqlite');
-  const root = await mkdtemp(resolve(__dirname, '../.mixed-reference-test-'));
+  const root = await mkdtemp(resolve(scratch, 'mixed-reference-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const referenceDatabase = resolve(root, 'fixture.sqlite'), db = new DatabaseSync(referenceDatabase);
   db.exec('CREATE TABLE perf_SmallRows (ID INTEGER PRIMARY KEY, groupNo INTEGER, value INTEGER, text TEXT)');
@@ -102,18 +106,18 @@ test('mixed preflight exercises every operation before permitting warm timing', 
 });
 
 test('fixed CAP and WASM endpoints share each server and preserve persistence, callbacks and rollback', async () => {
-  const { APP_ROOT, loadFixture, deploy } = require('../bench/fixture.js');
+  const { APP_ROOT, OYSTER_ROOT, loadFixture, deploy } = require('../bench/fixture.js');
   const { startServer } = require('../bench/process.js');
   const { verifyScenario } = require('../bench/verify.js');
   const { executeRun, sourceHashes } = require('../bench/run.js');
   const frozen = await loadFixture();
   const before = await sourceHashes();
-  const logs = await mkdtemp(resolve(APP_ROOT, '.integration-test-'));
+  const logs = await mkdtemp(resolve(scratch, 'integration-test-'));
   let index = 0;
   try {
     for (const plain of [true, false]) {
       if (!plain) await deploy();
-      const server = await startServer({ root: plain ? resolve(APP_ROOT, 'apps/cap') : APP_ROOT }, resolve(logs, plain ? 'cap' : 'oyster'), { diagnostics: true });
+      const server = await startServer({ root: plain ? resolve(APP_ROOT, 'apps/baseline-plain') : OYSTER_ROOT }, resolve(logs, plain ? 'cap' : 'oyster'), { diagnostics: true });
       const pid = server.child.pid;
       try {
         if (!plain) assert.equal(server.state.annotations.length, 35);

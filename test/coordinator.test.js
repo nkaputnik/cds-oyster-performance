@@ -1,9 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtemp, writeFile, rm, readFile } = require('node:fs/promises');
+const { mkdtemp, mkdir, writeFile, rm, readFile } = require('node:fs/promises');
 const { resolve } = require('node:path');
+const { homedir } = require('node:os');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+
+const scratch = resolve(homedir(), 'git/clean-room/cds-oyster-performance-tests');
+test.before(() => mkdir(scratch, { recursive: true }));
 
 test('verification CLI help exits without needing a fixture', async () => {
   const result = await promisify(execFile)(process.execPath, [resolve(__dirname, '../bench/verify.js'), '--help']);
@@ -40,7 +44,7 @@ test('short and long protocols cover every question and reuse servers across cas
 
 test('owned server waits for readiness and rejects IPC errors without retrying', async () => {
   const { startServer } = require('../bench/process.js');
-  const root = await mkdtemp(resolve(__dirname, '../.process-test-'));
+  const root = await mkdtemp(resolve(scratch, 'process-test-'));
   try {
     const entry = resolve(root, 'server.js');
     await writeFile(entry, `const http=require('node:http');
@@ -61,7 +65,7 @@ test('owned server waits for readiness and rejects IPC errors without retrying',
 
 test('exit before readiness reports the owned log and does not leave a child', async () => {
   const { startServer } = require('../bench/process.js');
-  const root = await mkdtemp(resolve(__dirname, '../.process-test-'));
+  const root = await mkdtemp(resolve(scratch, 'process-test-'));
   try {
     const entry = resolve(root, 'server.js');
     await writeFile(entry, `console.error('startup failure'); process.exit(7);`);
@@ -73,7 +77,7 @@ test('exit before readiness reports the owned log and does not leave a child', a
 test('a failed correctness preflight is recorded once and cannot proceed to warm measurement', async () => {
   const { executeRun, parseArgs } = require('../bench/run.js');
   const { scenario } = require('../bench/scenarios.js');
-  const root = await mkdtemp(resolve(__dirname, '../.coordinator-test-'));
+  const root = await mkdtemp(resolve(scratch, 'coordinator-test-'));
   const calls = [];
   const server = { state: { plugins: [], engine: null, annotations: [] }, runtime: { expectedHandlers: [] }, alive: true, url: 'http://127.0.0.1:1',
     call: async type => { calls.push(type); throw new Error('preflight failure'); } };
@@ -93,7 +97,7 @@ test('a failed correctness preflight is recorded once and cannot proceed to warm
 
 test('external CPU measurement preserves the command result and process CPU time', async () => {
   const { executeCommand } = require('../bench/process.js');
-  const root = await mkdtemp(resolve(__dirname, '../.process-test-'));
+  const root = await mkdtemp(resolve(scratch, 'process-test-'));
   try {
     const result = await executeCommand(process.execPath, ['-e', 'const until=Date.now()+300; while(Date.now()<until) Math.sqrt(Math.random());'],
       { logPrefix: resolve(root, 'cpu'), measureCpu: true });

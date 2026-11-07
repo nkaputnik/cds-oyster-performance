@@ -53,7 +53,7 @@ function oysterHandler(s, label = operation(s)) {
   const file = route.entity
     ? route.entity + '/' + ({ create: 'before-CREATE', update: 'before-UPDATE', read: 'after-READ' })[s.operation]
     : 'on-' + route.action.replace(/Extension$/, '');
-  return '[' + safe(label) + '](../../srv/' + service + '/' + file + '.js)';
+  return '[' + safe(label) + '](' + (s.sourceRoot || '../../apps/extension/srv/') + service + '/' + file + '.js)';
 }
 
 function oysterSources(scenarios) {
@@ -224,7 +224,7 @@ function applicationOverview(ordinary, pointWork, bulk, api, constraints = []) {
       ]),
     ];
     if (additions.length) blocks.push('The custom-entity comparison measures adding an accepted fixed-limit constraint to generic CRUD. It includes the additional quantity and unitPrice request fields. The native/Oyster constraint comparisons above use identical inputs.');
-    blocks.push('These are individual SQLite constraint invocations. Measure the complete application to budget requests that invoke several handlers. Synthetic calculations below are stress workloads.');
+    blocks.push('These are individual ' + (api.cloud ? 'tenant HANA' : 'SQLite') + ' constraint invocations. Measure the complete application to budget requests that invoke several handlers. Synthetic calculations below are stress workloads.');
     return blocks;
   }
   const additions = matched(ordinary.filter(r => !r.scenario.mixed
@@ -251,11 +251,13 @@ function applicationOverview(ordinary, pointWork, bulk, api, constraints = []) {
         'Equivalent native handler'],
     ]),
   ];
-  blocks.push('These are low-load SQLite measurements of individual handlers. A complete business application, multiple extension calls in one request, and registration and startup costs were not measured. Concurrent load reveals how throughput and request latency change together.');
+  blocks.push('These are low-load ' + (api.cloud ? 'tenant HANA' : 'SQLite') + ' measurements of individual handlers. A complete business application, multiple extension calls in one request, and registration and startup costs were not measured. Concurrent load reveals how throughput and request latency change together.');
   return blocks;
 }
 
 function buildHumanReport(manifest, results, api) {
+  const cloud = manifest.environment?.execution === 'cloud';
+  api = { ...api, cloud };
   const { groups, tuples, summarize, lowLoad, eligible, validationIssues } = api;
   const invalid = validationIssues(manifest.validation).length > 0;
   const transport = results.some(r => r.transport === 'http') ? 'http' : 'service';
@@ -289,10 +291,14 @@ function buildHumanReport(manifest, results, api) {
     : extension.filter(r => ['wasm-empty', 'wasm-compute', 'wasm-compute-read'].includes(r.context.scenario.mode)
       && r.context.scenario.iterations <= 100 && r.context.scenario.callbacks <= 1);
   const settings = manifest.settings || {}, environment = manifest.environment || {}, dependencies = environment.dependencies || {};
+  const routed = environment.network?.mode === 'cf-router';
+  const cloudTransport = routed ? 'over CF router HTTPS with tenant HANA' : 'over CF container-to-container ' + (environment.network?.tls ? 'HTTPS' : 'HTTP') + ' with tenant HANA';
   const blocks = ['# CDS-Oyster performance results',
     'CDS-Oyster provides the isolated WebAssembly (WASM) runtime required for business logic from untrusted sources in SAP Cloud Application Programming Model (CAP). This report compares response time and throughput for equivalent native JavaScript and Oyster handlers. Native execution is the measurement reference. Untrusted logic runs in Oyster. A handler is custom code invoked for a data request or service action.',
     '**Blue: native. Orange: Oyster. Gray: no-handler controls.** Vertical bars show absolute measurements. Lower latency means shorter response time. Higher throughput means more requests completed per second. p95 is the response time within which 95% of successful requests completed. Throughput is successful requests per second.',
     '## Application-level impact'];
+  if (cloud && settings.pilot) blocks.splice(1, 0, '**Rate-limited setup pilot: configured cap of 3 workload requests/s.** These measurements verify authenticated execution and evidence collection at the configured rate cap. Full concurrency and capacity conclusions require the complete closed-loop protocol.');
+  if (cloud && routed) blocks.splice(1, 0, 'Requests travel from the CF runner through the CF router over HTTPS to the provider. End-to-end measurements include TLS and CF router costs; native and Oyster pairs share this path. These measurements do not isolate handler costs at microsecond precision.');
   const whole = primary.filter(r => finite(r.wholeScanElapsedSeconds));
   const wholePairs = matched(whole, api, modeIs('native-compute'), modeIs('wasm-compute'));
   if (pointExamples.length) {
@@ -429,7 +435,7 @@ function buildHumanReport(manifest, results, api) {
     blocks.push('The per-request delta shows how Oyster’s added latency changes with load. Use it with the complete round-trip time and throughput to choose a concurrency limit.');
   } else blocks.push('Not measured: validated matching latency/throughput measurements across loads are missing.');
   const failedLoads = results.filter(r => r.phase === 'warm' && !lowLoad(r) && (!eligible(r) || invalid));
-  blocks.push('Recorded higher-load failures: ' + failedLoads.length + '. Successful response latency excludes failed or unsuitable runs. The load generator sends the next request after a response; these are closed-loop concurrency measurements on one machine with local SQLite. They do not establish independently scheduled arrival-rate capacity or horizontal scaling across servers.');
+  blocks.push('Recorded higher-load failures: ' + failedLoads.length + '. Successful response latency excludes failed or unsuitable runs. ' + (cloud && settings.pilot ? 'These are rate-limited pilot observations with a configured 3 workload requests/s cap ' + cloudTransport + '.' : 'The load generator sends the next request after a response; these are closed-loop concurrency measurements ' + (cloud ? cloudTransport : 'on one machine with local SQLite') + '.') + ' They do not establish independently scheduled arrival-rate capacity or horizontal scaling across servers.');
   if (failedLoads.length) blocks.push(table(['Failed workload', 'Load', 'Successful requests/s', 'Errors', 'Dropped starts'], failedLoads.map(r =>
     [r.scenario.mode.startsWith('wasm-') ? oysterHandler(r.scenario, operation(r.scenario) + ': ' + modes[r.scenario.mode]) : operation(r.scenario) + ': ' + modes[r.scenario.mode], loadLabel(r), number(r.stats?.successfulRps), number(r.stats?.errors), number(r.stats?.droppedIterations)])));
   blocks.push('## 4. How do measured costs relate to Oyster’s runtime work?',
@@ -453,7 +459,7 @@ function buildHumanReport(manifest, results, api) {
     ['Pass data already available to the application and allow bounded queries for additional records.', 'The individual-versus-batch comparison tests the cost of fetching equivalent data with fewer callbacks. The custom logic still runs in Oyster.'],
     ['Measure per-record invocation and whole-dataset processing before exposing those interfaces.', 'Large-result and scan costs are measured. Repeated per-record invocation is a separate workload that this test run does not quantify.'],
     ['Set latency and concurrency budgets for representative extension workloads.', 'Use throughput to identify the capacity knee and added request time to assess its latency cost.'],
-  ]), 'These measurements describe the tested CAP and Oyster versions on one host with SQLite. They do not compare alternative isolation runtimes or establish production HANA performance.');
+  ]), cloud ? 'These measurements describe the tested CAP and Oyster versions ' + cloudTransport + '. They do not establish production application capacity.' : 'These measurements describe the tested CAP and Oyster versions on one host with SQLite. They do not compare alternative isolation runtimes or establish production HANA performance.');
 
   blocks.push('## Evidence quality and remaining measurements', table(['Question', 'Evidence status'], [
     ['Marginal CQL callback cost', fanout.length ? 'Matched 1-versus-10 query observations are present. Repeat before generalizing the increment.' : 'Not measured: the completed test run lacks matched 1-versus-10 queries.'],
@@ -463,15 +469,18 @@ function buildHumanReport(manifest, results, api) {
     ['Other workloads and horizontal scaling', 'Heavy-load conclusions apply to the named workloads. Multi-server scaling is not measured.'],
   ]));
   blocks.push('## Run setup and reproduction', table(['Recorded setting', 'Value'], [
-    ['Run', manifest.id || 'not recorded'], ['Hardware / OS', [environment.cpus?.[0]?.model, environment.platform, environment.arch].filter(Boolean).join(' / ') || 'not recorded'],
-    ['Node / CAP / Oyster / SQLite adapter', [environment.node, dependencies['@sap/cds'], dependencies['@sap/cds-oyster'], dependencies['@cap-js/sqlite']].map(v => v || 'not recorded').join(' / ')],
-    ['Protocol / repetitions', (settings.suite || 'not recorded') + ' / ' + count(settings.repetitions)],
+    ['Run', manifest.id || 'not recorded'], cloud ? ['CF foundation / region', [environment.foundation, environment.region].map(v => v || 'not recorded').join(' / ')] : ['Hardware / OS', [environment.cpus?.[0]?.model, environment.platform, environment.arch].filter(Boolean).join(' / ') || 'not recorded'],
+    ['Node / CAP / Oyster / ' + (cloud ? 'HANA' : 'SQLite') + ' adapter', [environment.node, dependencies['@sap/cds'], dependencies['@sap/cds-oyster'], dependencies[cloud ? '@cap-js/hana' : '@cap-js/sqlite']].map(v => v || 'not recorded').join(' / ')],
+    ...(cloud ? [['Tenant', environment.tenant || 'not recorded'], ['Provider / runner limits', JSON.stringify({ provider: environment.provider?.memoryLimit, runner: environment.runner })], ['Network / HANA diagnostics', JSON.stringify({ network: environment.network, hana: environment.hanaDiagnostics })]] : []),
+    ['Protocol / repetitions', (cloud && settings.pilot ? 'rate-limited pilot, 3 workload requests/s' : settings.suite || 'not recorded') + ' / ' + count(settings.repetitions)],
     ['Warmup / measured seconds per case', number(settings.warmup ?? settings.warmupSeconds) + ' / ' + number(settings.duration ?? settings.measureSeconds)],
     ['Validation', manifest.runSummary?.passed === true ? 'Passed' : manifest.runSummary?.passed === false ? 'Failed or incomplete' : 'Completion not recorded'],
   ]),
-    'Both app copies use the same model and retained CSVs. The CDS CLI deploys SQLite while CAP is stopped. Fixed projections and stored handlers are reused across cases; writes rotate seeded rows and allocate distinct keys. Native and Oyster handlers share the app with Oyster installed; the plain CAP control omits the plugin. Server startup and warmup are outside measured request time.',
-    'Run npm install and npm run benchmark for short, or npm run benchmark:long for repeated/larger workloads. The [README](../../README.md) gives complete operator instructions. The runner starts and stops CAP and the load generator.',
-    '[Detailed results](details.md) contain the full named use-case chart catalog, every matched comparison, resource metric, validation check and failure. [Results JSON](results.json), [CSV](results.csv), [manifest](manifest.json), raw/ and logs/ retain the evidence. Report regeneration does not run new measurements.');
+    cloud ? 'One Oyster-enabled provider serves native, no-handler and active extension cases in the subscribed tenant. Independent repetition boundaries restore retained CSV identities through the tenant administration API while preserving evidence and the extension. Cached tenant OAuth, source hashing, upload and warmup are outside measurement. Provider and generator run in separate CF containers.' : 'Both app copies use the same model and retained CSVs. The CDS CLI deploys SQLite while CAP is stopped. Fixed projections and stored handlers are reused across cases; writes rotate seeded rows and allocate distinct keys. Native and Oyster handlers share the app with Oyster installed; the plain CAP control omits the plugin. Server startup and warmup are outside measured request time.',
+    cloud ? 'Execute node task.js --suite short or --suite long as a CF task in the packaged runner app. Export committed tenant evidence before deleting the tenant. Results retain measurement order; the manifest records source identities and authentication-renewal times.' : 'Run npm install and npm run benchmark for short, or npm run benchmark:long for repeated/larger workloads. The [README](../../README.md) gives complete operator instructions. The runner starts and stops CAP and the load generator.',
+    manifest.reporting?.compact
+      ? '[Detailed results](details.md) retain the full named use-case chart catalog, comparisons, resource metrics, correctness checks and failures. [Results JSON](results.json), [CSV](results.csv) and [manifest](manifest.json) retain aggregate observations and source hashes. Failed cases retain diagnostic files. Report regeneration does not run new measurements.'
+      : '[Detailed results](details.md) contain the full named use-case chart catalog, every matched comparison, resource metric, validation check and failure. [Results JSON](results.json), [CSV](results.csv), [manifest](manifest.json), raw/ and logs/ retain the evidence. Report regeneration does not run new measurements.');
   return blocks.filter(Boolean).join(NL + NL) + NL;
 }
 

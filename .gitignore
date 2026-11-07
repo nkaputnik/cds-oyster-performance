@@ -1,7 +1,10 @@
 node_modules/
 .runs/
 reports/
-db/*.sqlite*
+apps/provider/db/*.sqlite*
 package-lock.json
+.cdsrc-private.json
 *.log
 .DS_Store
+apps/provider/*.sqlite*
+**/gen/

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const api = require('../lib/workload.js');
+const api = require('../apps/provider/srv/lib/workload.js');
 
 test('CPU workload produces a checked deterministic 31-bit result', () => {
   assert.equal(typeof api.cpu, 'function');

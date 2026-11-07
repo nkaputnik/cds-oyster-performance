@@ -4,7 +4,7 @@ const { resolve } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { DATABASE_PATH } = require('./fixture.js');
 const { scenario, shuffled } = require('./scenarios.js');
-const { cpu } = require('../lib/workload.js');
+const { cpu } = require('../apps/provider/srv/lib/workload.js');
 const { publicRequest, validateActivation } = require('./verify.js');
 
 function referenceChunks(database, { rows = 1000000, chunkRows = 50000, iterations = 100 } = {}) {
@@ -25,7 +25,7 @@ function referenceChunks(database, { rows = 1000000, chunkRows = 50000, iteratio
   } finally { db.close(); }
 }
 
-async function measureWholeScan({ fixture, settings, reportDir, signal, results, server }) {
+async function measureWholeScan({ fixture, settings, reportDir, signal, results, server, compactEvidence = false }) {
   const rows = fixture.tables.LargeRows.count;
   const chunks = referenceChunks(DATABASE_PATH, { rows });
   for (let repetition = 1; repetition <= settings.repetitions; repetition++) {
@@ -63,7 +63,7 @@ async function measureWholeScan({ fixture, settings, reportDir, signal, results,
         console.log(mode + ': whole table in ' + result.wholeScanElapsedSeconds.toFixed(3) + ' s');
       } catch (error) { result.error = error.message; result.validation = { passed: false }; }
       finally {
-        await writeFile(rawFile, JSON.stringify(result, null, 2));
+        if (!compactEvidence || !result.validation.passed) await writeFile(rawFile, JSON.stringify(result, null, 2));
       }
     }
   }

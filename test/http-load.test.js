@@ -5,6 +5,40 @@ const { measureHTTP } = require('../bench/load.js');
 const { scenario } = require('../bench/scenarios.js');
 
 const fixture = { tables: { LookupRows: { ids: [1] }, SideEffectRows: { ids: [2] } } };
+test('cached authorization reaches workload and probe without entering evidence', async () => {
+  const secret = 'Bearer confidential-test-token';
+  let probes = 0;
+  const { server, url } = await listen((req, res) => {
+    if (req.url.endsWith('/probe')) probes++;
+    res.writeHead(req.headers.authorization === secret ? (req.url.endsWith('/probe') ? 200 : 204) : 401); res.end();
+  });
+  try {
+    const result = await measureHTTP({ url, headers: { authorization: secret }, collectResources: true,
+      scenario: scenario({ mode: 'oyster-idle' }), fixture, load: { kind: 'vus', value: 2 }, seconds: 1, probeRate: 2 });
+    assert.equal(result.stats.errors, 0); assert.equal(result.probe.errors, 0); assert.ok(probes > 0);
+    assert.ok(result.generatorResources.rssPeakMiB > 0);
+    assert.equal(JSON.stringify(result).includes(secret), false);
+  } finally { await new Promise(done => server.close(done)); }
+});
+test('cancellation stops closed-loop load and produces partial resource evidence', async () => {
+  const { server, url } = await listen((req, res) => { res.writeHead(204); res.end(); });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 150);
+  try {
+    const result = await measureHTTP({ url, signal: controller.signal, collectResources: true,
+      scenario: scenario({ mode: 'oyster-idle' }), fixture, load: { kind: 'vus', value: 1 }, seconds: 10 });
+    assert.equal(result.stats.cancelled, true); assert.ok(result.stats.elapsedSeconds < 3);
+    assert.ok(result.generatorResources.rssPeakMiB > 0);
+  } finally { clearTimeout(timer); await new Promise(done => server.close(done)); }
+});
+test('explicit pilot rate cap limits offered traffic and records its distinct protocol', async () => {
+  const { server, url } = await listen((req, res) => { res.writeHead(204); res.end(); });
+  try {
+    const result = await measureHTTP({ url, scenario: scenario({ mode: 'oyster-idle' }), fixture, load: { kind: 'vus', value: 1 }, seconds: 2, overallRate: 3 });
+    assert.ok(result.stats.successes <= 9); assert.ok(result.stats.successes >= 3);
+    assert.equal(result.protocol, 'rate-limited-pilot'); assert.equal(result.stats.offeredRps, 3);
+  } finally { await new Promise(done => server.close(done)); }
+});
 async function listen(handler) {
   const server = http.createServer(handler);
   await new Promise(done => server.listen(0, '127.0.0.1', done));

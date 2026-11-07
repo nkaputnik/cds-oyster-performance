@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "private": true,
+  "cds": {
+    "server": {
+      "port": 4006
+    },
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "url": "../provider/db/benchmark.sqlite"
+        },
+        "data": [
+          "../provider/db/data"
+        ]
+      },
+      "code-extensibility": false
+    },
+    "query": {
+      "limit": {
+        "default": 1000,
+        "max": 10000
+      }
+    }
+  },
+  "name": "baseline-plain",
+  "dependencies": {
+    "@sap/cds": "latest",
+    "@cap-js/sqlite": "latest"
+  }
+}

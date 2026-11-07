@@ -5,7 +5,8 @@ const { resolve } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const APP_ROOT = resolve(__dirname, '..');
-const DATABASE_PATH = resolve(APP_ROOT, 'db/benchmark.sqlite');
+const OYSTER_ROOT = resolve(APP_ROOT, 'apps/extension');
+const DATABASE_PATH = resolve(APP_ROOT, 'apps/provider/db/benchmark.sqlite');
 const TABLES = ['SmallRows', 'LargeRows', 'WriteRows', 'LookupRows', 'SideEffectRows'];
 async function hashFile(path) {
   return createHash('sha256').update(await readFile(path)).digest('hex');
@@ -20,8 +21,8 @@ async function command(executable, args, cwd = APP_ROOT, { signal } = {}) {
     child.on('exit', (code, signal) => code === 0 ? done() : reject(new Error(executable + ' exited ' + (signal || code) + ': ' + output)));
   });
 }
-async function deploy(cwd = APP_ROOT, options = {}) {
-  await command(resolve(APP_ROOT, 'node_modules/.bin/cds'), ['deploy', '--to', 'sqlite:db/benchmark.sqlite'], cwd, options);
+async function deploy(options = {}) {
+  await command(resolve(APP_ROOT, 'node_modules/.bin/cds'), ['deploy', '--to', 'sqlite:../provider/db/benchmark.sqlite'], OYSTER_ROOT, options);
 }
 function inspectFixture(database = DATABASE_PATH) {
   const db = new DatabaseSync(database, { readOnly: true });
@@ -43,10 +44,10 @@ function inspectFixture(database = DATABASE_PATH) {
 async function loadFixture() {
   await deploy();
   const hashes = {};
-  for (const name of TABLES) hashes['db/data/perf-' + name + '.csv'] = await hashFile(resolve(APP_ROOT, 'db/data/perf-' + name + '.csv'));
+  for (const name of TABLES) hashes['apps/provider/db/data/perf-' + name + '.csv'] = await hashFile(resolve(APP_ROOT, 'apps/provider/db/data/perf-' + name + '.csv'));
   return { deployedAt: new Date().toISOString(), source: 'CDS model and retained CSV files; cds deploy --to sqlite', ...inspectFixture(), hashes };
 }
-module.exports = { APP_ROOT, DATABASE_PATH, TABLES, hashFile, command, deploy, inspectFixture, loadFixture };
+module.exports = { APP_ROOT, OYSTER_ROOT, DATABASE_PATH, TABLES, hashFile, command, deploy, inspectFixture, loadFixture };
 
 if (require.main === module) {
   loadFixture().then(fixture => console.log('Deployed rows:', Object.fromEntries(Object.entries(fixture.tables).map(([name, value]) => [name, value.count]))))

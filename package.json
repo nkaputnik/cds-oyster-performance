@@ -8,46 +8,33 @@
     "@cap-js/sqlite": "latest"
   },
   "scripts": {
-    "start": "cds-serve",
-    "deploy": "cds deploy --to sqlite:db/benchmark.sqlite",
+    "start": "cds serve --project apps/extension",
+    "deploy": "npm run deploy --workspace apps/extension",
     "benchmark": "node bench/run.js --suite short",
     "benchmark:long": "node bench/run.js --suite long",
+    "cloud:build": "node apps/runner/build.js gen/runner",
+    "cloud:export": "node bench/cloud/export.js",
+    "btp": "node bench/cloud/shared.js",
+    "btp:setup-login": "node bench/cloud/login-service.js",
     "test": "node --test test/*.test.js",
     "verify": "node bench/verify.js",
-    "report": "node bench/reports.js"
+    "report": "node bench/reports.js",
+    "overview": "node bench/overview.js"
   },
   "private": true,
-  "extends": "oyster-benchmark-base",
   "workspaces": [
-    ".base"
+    "apps/baseline-plain",
+    "apps/provider",
+    "apps/provider/mtx/sidecar",
+    "apps/runner",
+    "apps/extension",
+    "apps/extension/.base"
   ],
-  "cds": {
-    "server": {
-      "port": 4006
-    },
-    "requires": {
-      "db": {
-        "kind": "sqlite",
-        "credentials": {
-          "url": "db/benchmark.sqlite"
-        }
-      },
-      "code-extensibility": {
-        "sandbox": "wasm"
-      }
-    },
-    "query": {
-      "limit": {
-        "default": 1000,
-        "max": 10000
-      }
-    }
-  },
   "devDependencies": {
     "@sap/cds-dk": "latest",
     "autocannon": "latest"
   },
-  "description": "Focused local CAP and Oyster performance comparisons",
+  "description": "Local and BTP CAP and Oyster performance comparisons",
   "engines": {
     "node": ">=22.18.0"
   }

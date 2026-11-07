@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const { SELECT } = require('../node_modules/@sap/cds-oyster/lib/engines/framework/ql/lib/ql/select.js');
 const { readFile } = require('node:fs/promises');
 const { scenario } = require('../bench/scenarios.js');
-const { cpu } = require('../lib/workload.js');
+const { cpu } = require('../apps/provider/srv/lib/workload.js');
 
 test('sandbox keyset scan builds greater-than predicates and advances over sparse pages', async () => {
   const rows = [{ ID: 11, value: 7 }, { ID: 12, value: 8 }, { ID: 14, value: 9 }];
@@ -17,7 +17,7 @@ test('sandbox keyset scan builds greater-than predicates and advances over spars
     return Promise.resolve(rows.filter(row => row.ID > val.val).slice(0, this.SELECT.limit.rows.val)).then(resolve);
   };
   const s = scenario({ mode: 'wasm-compute', operation: 'scan', scanRows: 3, pageSize: 2, iterations: 3 });
-  const source = await readFile(new URL('../srv/BenchmarkService/on-oysterScan.js', require('node:url').pathToFileURL(__filename)), 'utf8');
+  const source = await readFile(new URL('../apps/extension/srv/BenchmarkService/on-oysterScan.js', require('node:url').pathToFileURL(__filename)), 'utf8');
   const context = { module: { exports: null }, SELECT };
   vm.runInNewContext(source, context);
   const value = await context.module.exports.call({ entities: { NoHandlerLargeRows: { name: 'BenchmarkService.NoHandlerLargeRows' } } },

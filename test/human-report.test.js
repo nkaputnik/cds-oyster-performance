@@ -202,9 +202,9 @@ test('load trends require common independent repetitions at every load', () => {
 test('large READ findings link directly to the Oyster calculation and empty handlers', () => {
   const extra = { operation: 'read', table: 'LargeRows', rows: 1000 };
   const report = buildReport(manifest, [run('native-empty', 1, extra), run('wasm-empty', 10, extra), run('native-compute', 2, extra), run('wasm-compute', 20, extra)]);
-  assert.ok(report.includes('[Oyster calculation](../../srv/BenchmarkService/OysterCalculationLargeRows/after-READ.js)'));
+  assert.ok(report.includes('[Oyster calculation](../../apps/extension/srv/BenchmarkService/OysterCalculationLargeRows/after-READ.js)'));
   assert.ok(report.includes('| READ with per-row arithmetic | 2 | 20 | +18 |'));
-  assert.ok(report.includes('[empty Oyster handler](../../srv/BenchmarkService/OysterEmptyLargeRows/after-READ.js)'));
+  assert.ok(report.includes('[empty Oyster handler](../../apps/extension/srv/BenchmarkService/OysterEmptyLargeRows/after-READ.js)'));
 });
 
 test('Oyster source links resolve CRUD events, action variants, extension points and mixed work', () => {
@@ -227,12 +227,12 @@ test('Oyster source links resolve CRUD events, action variants, extension points
   ];
   for (const [mode, extra, path] of cases) {
     const report = buildDetailedReport(manifest, [run(mode, 2, extra)]);
-    assert.ok(report.includes('](../../srv/' + path + ')'), path);
-    assert.ok(!report.includes(String.fromCharCode(92) + '](../../srv/' + path + ')'), 'source links must render as Markdown links');
+    assert.ok(report.includes('](../../apps/extension/srv/' + path + ')'), path);
+    assert.ok(!report.includes(String.fromCharCode(92) + '](../../apps/extension/srv/' + path + ')'), 'source links must render as Markdown links');
   }
   const mixed = buildDetailedReport(manifest, [run('wasm-compute-read', 2, { operation: 'read', mixed: true })]);
   for (const path of ['OysterCqlReadSmallRows/after-READ.js', 'OysterCqlReadWriteRows/before-CREATE.js', 'OysterCqlReadWriteRows/before-UPDATE.js', 'on-oysterCqlRead.js'])
-    assert.ok(mixed.includes('](../../srv/BenchmarkService/' + path + ')'), path);
+    assert.ok(mixed.includes('](../../apps/extension/srv/BenchmarkService/' + path + ')'), path);
   const controls = buildDetailedReport(manifest, [run('cap-baseline', 1), run('oyster-idle', 1)]);
   assert.doesNotMatch(controls, /\]\(\.\.\/\.\.\/srv\//);
 });
@@ -253,7 +253,7 @@ test('application overview includes the extension-point delta table and omits as
   assert.doesNotMatch(overview, /Illustrative request|100 ms|baseline is assumed/);
   assert.doesNotMatch(overview, /20%|100\.3 ms|first-order estimate|traffic share|Defined points are not calls|Requests pay|invokes only one|budget its latency/);
   assert.ok(report.indexOf('Predefined extension point: request time') < report.indexOf('Processing the whole million-row table'));
-  assert.ok(report.includes('](../../srv/BenchmarkExtensionService/on-oysterCqlRead.js)'));
+  assert.ok(report.includes('](../../apps/extension/srv/BenchmarkExtensionService/on-oysterCqlRead.js)'));
 });
 
 test('report conclusions distinguish result-transfer cost from arithmetic without checksum terminology', () => {

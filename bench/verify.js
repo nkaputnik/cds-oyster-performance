@@ -2,9 +2,9 @@ const assert = require('node:assert/strict');
 const { resolve } = require('node:path');
 const { mkdir, writeFile } = require('node:fs/promises');
 const { createHash } = require('node:crypto');
-const { cpu } = require('../lib/workload.js');
+const { cpu } = require('../apps/provider/srv/lib/workload.js');
 const { requestFor, endpoint } = require('./requests.js');
-const { loadFixture, deploy, DATABASE_PATH, APP_ROOT } = require('./fixture.js');
+const { loadFixture, deploy, DATABASE_PATH, APP_ROOT, OYSTER_ROOT } = require('./fixture.js');
 const { startServer } = require('./process.js');
 
 const scalar = body => body && typeof body === 'object' && 'value' in body ? body.value : body;
@@ -122,9 +122,11 @@ function validateResponse(s, fixture, request, response, { scanChecksum, readRow
   return validation;
 }
 
-async function publicRequest(server, request, { timeoutMs = 120000, signal } = {}) {
+async function publicRequest(server, request, { timeoutMs = 120000, signal, headers } = {}) {
   const start = performance.now();
-  const response = await fetch(server.url + request.path, { method: request.method, headers: request.headers,
+  const authenticatedHeaders = new Headers(server.headers);
+  for (const source of [headers, request.headers]) if (source) for (const [name, value] of new Headers(source)) authenticatedHeaders.set(name, value);
+  const response = await fetch(server.url + request.path, { method: request.method, headers: authenticatedHeaders, redirect: 'error',
     body: request.body === undefined ? undefined : JSON.stringify(request.body),
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
   const text = await response.text();
@@ -176,7 +178,9 @@ async function verifyRollback(server, fixture, { iteration = 85000, signal, scen
   return { passed: true, rejectionStatus: response.status, insertedRowAbsent: true, auxiliaryUnchanged: true, response };
 }
 
-async function verifyScenario(server, s, fixture, { transport = 'http', diagnostics = false, rollback = true, iteration = 80000, signal, referenceDatabase } = {}) {
+async function verifyScenario(server, s, fixture, { transport = 'http', diagnostics = false, rollback = true, iteration = 80000, signal, referenceDatabase,
+  referenceAdapter, reference = referenceAdapter, headers } = {}) {
+  if (headers) server = { ...server, headers: { ...server.headers, ...headers } };
   assert.ok(!s.expectedFailure, 'Limit probes cannot pass normal correctness preflight');
   const activation = validateActivation(s, server.state);
   const request = requestFor(s, fixture, { iteration });
@@ -186,8 +190,8 @@ async function verifyScenario(server, s, fixture, { transport = 'http', diagnost
   const before = s.validationOutcome === 'rejected' && s.operation === 'update' ? await getWritten() : null;
   if (diagnostics) await publicRequest(server, { method: 'POST', path: '/__benchmark/diagnostics/reset' }, { signal });
   const response = await publicRequest(server, request, { signal });
-  const scanChecksum = s.operation === 'scan' ? await scanReference(s) : undefined;
-  const readRows = s.operation === 'read' ? await readReference(s, fixture, request, { database: referenceDatabase }) : undefined;
+  const scanChecksum = s.operation === 'scan' ? await (reference ? reference.scanReference(s) : scanReference(s)) : undefined;
+  const readRows = s.operation === 'read' ? await (reference ? reference.readReference(s, fixture, request) : readReference(s, fixture, request, { database: referenceDatabase })) : undefined;
   const validation = { ...validateResponse(s, fixture, request, response, { scanChecksum, readRows }), activation, response };
   if (diagnostics) {
     const callbacks = await publicRequest(server, { method: 'GET', path: '/__benchmark/callbacks' }, { signal });
@@ -234,7 +238,7 @@ async function verifyScenario(server, s, fixture, { transport = 'http', diagnost
     for (const operation of ['create', 'update', 'action']) {
       const member = { ...s, mixed: false, operation, table: operation === 'action' ? s.readTable || 'SmallRows' : 'WriteRows' };
       validation.mixedOperations.push({ operation, validation: await verifyScenario(server, member, fixture,
-        { transport, rollback: false, iteration, signal, referenceDatabase }) });
+        { transport, rollback: false, iteration, signal, referenceDatabase, reference }) });
     }
   }
   if (diagnostics) {
@@ -271,11 +275,11 @@ async function main() {
   try {
     for (const [index, run] of planRuns(settings).entries()) {
       controller.signal.throwIfAborted();
-      const appRoot = run.scenario.mode === 'cap-baseline' ? resolve(APP_ROOT, 'apps/cap') : APP_ROOT;
+      const appRoot = run.scenario.mode === 'cap-baseline' ? resolve(APP_ROOT, 'apps/baseline-plain') : OYSTER_ROOT;
       const batch = appRoot + ':' + run.repetition;
       if (appBatch !== batch) {
         if (server) await server.stop();
-        if (appBatch !== undefined) await deploy(APP_ROOT, { signal: controller.signal });
+        if (appBatch !== undefined) await deploy({ signal: controller.signal });
         server = await startServer({ root: appRoot }, resolve(root, 'logs', String(index)), { diagnostics: true, signal: controller.signal });
         appBatch = batch;
       }

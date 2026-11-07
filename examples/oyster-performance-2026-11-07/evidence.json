@@ -1,0 +1,87 @@
+{
+  "method": "Exact bench/report.js workload identity and mode suffix; one eligible native/Oyster pair per repetition. Equal repetition weights. Percentages calculated within pairs before averaging.",
+  "inputs": {
+    "btp-long": {
+      "directory": "btp-long-2026-11-07",
+      "id": "133b2e8f-24de-49a9-ba4c-8e76f052ca19",
+      "startedAt": "2026-11-07T11:53:12.949Z",
+      "finishedAt": "2026-11-07T13:40:20.669Z",
+      "records": 351,
+      "settings": {
+        "suite": "long",
+        "seed": 42,
+        "transport": "http",
+        "warmup": 3,
+        "duration": 10,
+        "repetitions": 3,
+        "pilot": false
+      },
+      "hashes": {
+        "manifest.json": "cdf4f39266cb065be2a21067372d85c6312357799a47a0ef6184a410621e7907",
+        "results.csv": "15362a869a46c056241a49a538a5ef11efa0cb31c4c7dfd6c48f124a74f654f3"
+      },
+      "pairedGroups": 51
+    },
+    "btp-short": {
+      "directory": "btp-short-2026-11-07",
+      "id": "991d0f30-50e8-42ab-8b37-3de44e98c021",
+      "startedAt": "2026-11-07T09:46:27.084Z",
+      "finishedAt": "2026-11-07T10:04:04.860Z",
+      "records": 102,
+      "settings": {
+        "suite": "short",
+        "seed": 42,
+        "transport": "http",
+        "warmup": 2,
+        "duration": 4,
+        "repetitions": 1,
+        "pilot": false
+      },
+      "hashes": {
+        "manifest.json": "08942742774cf3dbe9c71bd823fad6b544ee5d4178d840de365c6feb577fb68b",
+        "results.csv": "ea9cfd01136c8a043f2e77ba80aa04a4f9d4c03096b2252547d1a4b4f3e49e82"
+      },
+      "pairedGroups": 45
+    },
+    "local-long": {
+      "directory": "local-long-2026-11-06",
+      "id": "bench-2026-11-06T14-21-27-043Z",
+      "startedAt": "2026-11-06T14:21:27.044Z",
+      "finishedAt": "2026-11-06T15:45:11.374Z",
+      "records": 369,
+      "settings": {
+        "suite": "long",
+        "seed": 42,
+        "transport": "http",
+        "warmup": 3,
+        "duration": 10,
+        "repetitions": 3
+      },
+      "hashes": {
+        "manifest.json": "cae139ae82a839096e4ec42ed94a9af545c88adf3a245a111bd6fac3c89c15c3",
+        "results.csv": "f5a6626318551e29d46529a710594ec8d5124b8d59e62913750292102363a195"
+      },
+      "pairedGroups": 51
+    },
+    "local-short": {
+      "directory": "local-short-2026-11-06",
+      "id": "bench-2026-11-06T14-09-44-925Z",
+      "startedAt": "2026-11-06T14:09:44.927Z",
+      "finishedAt": "2026-11-06T14:21:23.418Z",
+      "records": 108,
+      "settings": {
+        "suite": "short",
+        "seed": 42,
+        "transport": "http",
+        "warmup": 2,
+        "duration": 4,
+        "repetitions": 1
+      },
+      "hashes": {
+        "manifest.json": "2b87196e760e6ec372883913db1066c7e02516e6e3d97a6e2f7ffeeaa5cecff9",
+        "results.csv": "657a78464470a2a1e624414da67c9793614909c31e740f4cac63e65d23c1b54e"
+      },
+      "pairedGroups": 45
+    }
+  }
+}

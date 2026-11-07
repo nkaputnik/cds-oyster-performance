@@ -1,0 +1,21 @@
+_schema-version: 3.3.0
+ID: oyster-performance-shared
+extends: oyster-performance
+modules:
+  - name: oyster-perf-runner
+    parameters:
+      no-route: false
+      no-start: false
+      instances: 1
+      routes:
+        - route: d034457-oyster-benchmarks.cfapps.eu12-002.hana.ondemand.com
+      health-check-type: http
+      health-check-http-endpoint: /health
+    properties:
+      BENCHMARK_LOGIN_SERVICE: oyster-perf-login
+    requires:
+      - name: oyster-perf-auth
+      - name: oyster-perf-login
+resources:
+  - name: oyster-perf-login
+    type: org.cloudfoundry.existing-service

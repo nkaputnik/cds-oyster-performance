@@ -1,0 +1,178 @@
+_schema-version: 3.3.0
+ID: oyster-performance
+version: 1.0.0
+description: "Tenant-isolated CAP and Oyster performance benchmark"
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build apps/provider --production
+        - mkdir -p apps/provider/gen/srv/db
+        - cp -R apps/provider/db/data apps/provider/gen/srv/db/
+        - node apps/runner/build.js gen/runner
+modules:
+  - name: oyster-perf-srv
+    type: nodejs
+    path: apps/provider/gen/srv
+    parameters:
+      instances: 1
+      buildpack: nodejs_buildpack
+      memory: 1024M
+      disk-quota: 1024M
+      routes:
+        - route: d034457-oyster-perf-srv.cfapps.eu12-002.hana.ondemand.com
+        - route: d034457-oyster-perf-srv.apps.internal
+    build-parameters:
+      builder: npm-ci
+    properties:
+      CDS_LOG_LEVELS_ODATA: warn
+      CDS_LOG_LEVELS_REST: warn
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: https://d034457-oyster-perf-srv.cfapps.eu12-002.hana.ondemand.com
+    requires:
+      - name: oyster-perf-auth
+      - name: oyster-perf-db
+
+  - name: oyster-perf-mtx
+    type: nodejs
+    path: apps/provider/gen/mtx/sidecar
+    requires:
+      - name: oyster-perf-auth
+      - name: oyster-perf-db
+      - name: oyster-perf-registry
+      - name: app-api
+        properties:
+          SUBSCRIPTION_URL: ~{app-protocol}://\${tenant_subdomain}-~{app-uri}
+    build-parameters:
+      builder: npm-ci
+    parameters:
+      instances: 1
+      memory: 1024M
+      disk-quota: 1024M
+      routes:
+        - route: d034457-oyster-perf-mtx.cfapps.eu12-002.hana.ondemand.com
+    hooks:
+      - name: upgrade-all
+        type: task
+        phases:
+          - blue-green.application.before-start.idle
+          - deploy.application.before-start
+        parameters:
+          name: upgrade
+          memory: 512M # increase as required
+          disk-quota: 1024M
+          command: cds-mtx upgrade '*'
+    provides:
+      - name: mtx-api
+        properties:
+          mtx-url: https://d034457-oyster-perf-mtx.cfapps.eu12-002.hana.ondemand.com
+  - name: oyster-perf-router
+    type: approuter.nodejs
+    path: apps/provider/.deploy/app-router
+    parameters:
+      keep-existing-routes: true
+      instances: 1
+      disk-quota: 512M
+      memory: 256M
+      routes:
+        - route: d034457-oyster-perf.cfapps.eu12-002.hana.ondemand.com
+    build-parameters:
+      builder: npm-ci
+    properties:
+      TENANT_HOST_PATTERN: '^(.*)-d034457-oyster-perf\.cfapps\.eu12-002\.hana\.ondemand\.com$'
+    requires:
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api # must be used in xs-app.json as well
+          url: ~{srv-url}
+          forwardAuthToken: true
+      - name: mtx-api
+        group: destinations
+        properties:
+          name: mtx-api # must be used in xs-app.json as well
+          url: ~{mtx-url}
+      - name: oyster-perf-auth
+    provides:
+      - name: app-api
+        properties:
+          app-protocol: ${protocol}
+          app-uri: d034457-oyster-perf.cfapps.eu12-002.hana.ondemand.com
+
+  - name: oyster-perf-runner
+    type: nodejs
+    path: gen/runner
+    parameters:
+      buildpack: nodejs_buildpack
+      no-route: true
+      no-start: true
+      memory: 1024M
+      disk-quota: 2048M
+    build-parameters:
+      builder: npm-ci
+    properties:
+      BENCHMARK_PROVIDER_URL: https://d034457-oyster-perf-srv.cfapps.eu12-002.hana.ondemand.com
+      BENCHMARK_NETWORK_PATH: cf-router
+      BENCHMARK_SUBDOMAIN: d034457-xtguide-eu12-test
+      BENCHMARK_TENANT_ID: 23f8432a-6464-445a-966a-415a4a0ae3f9
+      BENCHMARK_REGION: eu12
+      BENCHMARK_FOUNDATION: https://api.cf.eu12-002.hana.ondemand.com
+      BENCHMARK_HANA_ID: 25a70e86-5e59-4a68-b3ee-d35e9272c85c
+      BENCHMARK_HANA_MEMORY_GB: 32
+      BENCHMARK_HANA_STORAGE_GB: 160
+    requires:
+      - name: oyster-perf-auth
+
+resources:
+  - name: oyster-perf-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: oyster-performance-${space}
+        tenant-mode: shared
+        oauth2-configuration:
+          credential-types:
+            - "binding-secret"
+            - "x509"
+          redirect-uris:
+            - https://*~{app-api/app-uri}/**
+        role-collections:
+          - name: 'Oyster Benchmark Extension Developer (${space})'
+            description: 'generated'
+            role-template-references:
+              - '$XSAPPNAME.ExtensionDeveloper'
+    requires:
+      - name: app-api
+  - name: oyster-perf-db
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: service-manager
+      service-plan: container
+  - name: oyster-perf-registry
+    type: org.cloudfoundry.managed-service
+    requires:
+      - name: mtx-api
+    parameters:
+      service: saas-registry
+      service-plan: application
+      config:
+        xsappname: oyster-performance-${space}
+        appName: oyster-performance-${space}
+        displayName: Oyster Performance Benchmark
+        description: Native and Oyster comparisons in a subscribed HANA tenant.
+        category: 'Development'
+        appUrls:
+          getDependencies: ~{mtx-api/mtx-url}/-/cds/saas-provisioning/dependencies
+          onSubscription: ~{mtx-api/mtx-url}/-/cds/saas-provisioning/tenant/{tenantId}
+          onSubscriptionAsync: true
+          onUnSubscriptionAsync: true
+          onUpdateDependenciesAsync: true
+          callbackTimeoutMillis: 300000 # Increase if your deployments are taking longer than that

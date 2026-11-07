@@ -1,0 +1,23 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const { createEvidenceClient } = require('../bench/cloud/evidence.js');
+test('evidence uses renewed cached headers and bounds stalled requests', async t => {
+  const seen = [];
+  const server = http.createServer((req, res) => { seen.push(req.headers.authorization); if (req.url.includes('stall')) return;
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ value: [] })); });
+  await new Promise(done => server.listen(0, '127.0.0.1', done));
+  t.after(() => { server.closeAllConnections(); return new Promise(done => server.close(done)); });
+  let cached = { authorization: 'Bearer first' };
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const client = createEvidenceClient({ url, headers: () => cached, timeoutMs: 100 });
+  assert.deepEqual(await client.listArtifacts('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), []);
+  cached = { authorization: 'Bearer second' };
+  await client.listArtifacts('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  assert.deepEqual(seen, ['Bearer first', 'Bearer second']);
+  const stalled = createEvidenceClient({ url: url + '/stall', headers: cached, timeoutMs: 100 });
+  await assert.rejects(stalled.getRun('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), /timeout|aborted/i);
+  const controller = new AbortController(); controller.abort();
+  const cancelled = createEvidenceClient({ url, headers: cached, signal: controller.signal });
+  await assert.rejects(cancelled.getRun('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), /abort/i);
+});

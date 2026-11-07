@@ -94,6 +94,22 @@ function suite(name) {
   return core;
 }
 
+function cloudSuite(name) {
+  const selected = [], seen = new Set();
+  for (const source of suite(name)) {
+    const { id, expectedCallbacks, benchmarkLoad, ...work } = source;
+    if (work.mode === 'cap-baseline') work.mode = 'oyster-idle';
+    const s = scenario(work);
+    const load = benchmarkLoad || { kind: 'vus', value: 1 };
+    const key = JSON.stringify([work, load.kind, load.value]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (benchmarkLoad) s.benchmarkLoad = { ...benchmarkLoad };
+    selected.push(s);
+  }
+  return selected;
+}
+
 function shuffled(items, seed = 42) {
   const result = [...items];
   let state = seed >>> 0;
@@ -105,4 +121,4 @@ function shuffled(items, seed = 42) {
   return result;
 }
 
-module.exports = { MODES, callbackBudget, scenario, suite, shuffled };
+module.exports = { MODES, callbackBudget, scenario, suite, cloudSuite, shuffled };

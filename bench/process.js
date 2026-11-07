@@ -1,5 +1,5 @@
 const { fork, spawn } = require('node:child_process');
-const { open, mkdir, readFile, access } = require('node:fs/promises');
+const { open, mkdir, readFile, writeFile, access } = require('node:fs/promises');
 const { resolve } = require('node:path');
 const { APP_ROOT } = require('./fixture.js');
 
@@ -71,26 +71,29 @@ async function startServer(runtime, logDir, { entry = resolve(APP_ROOT, 'node_mo
   finally { clearTimeout(timer); }
 }
 
-async function executeCommand(executable, args, { cwd = APP_ROOT, env = {}, logPrefix, signal, timeoutMs = 180000, measureCpu = false, input } = {}) {
+async function executeCommand(executable, args, { cwd = APP_ROOT, env = {}, logPrefix, signal, timeoutMs = 180000, measureCpu = false, input, captureOutput = false } = {}) {
   signal?.throwIfAborted();
   const stdoutPath = logPrefix + '.stdout.log', stderrPath = logPrefix + '.stderr.log';
-  const stdout = await open(stdoutPath, 'w'), stderr = await open(stderrPath, 'w');
+  const stdout = captureOutput ? null : await open(stdoutPath, 'w'), stderr = captureOutput ? null : await open(stderrPath, 'w');
   const started = performance.now();
   let timerExecutable;
   if (measureCpu) { try { await access('/usr/bin/time'); timerExecutable = '/usr/bin/time'; } catch { /* CPU remains unavailable. */ } }
   const grouped = process.platform !== 'win32';
   let child;
   try { child = spawn(timerExecutable || executable, timerExecutable ? ['-p', executable, ...args] : args,
-    { cwd, env: { ...process.env, ...env }, stdio: [input === undefined ? 'ignore' : 'pipe', stdout.fd, stderr.fd], detached: grouped }); }
-  finally { await stdout.close(); await stderr.close(); }
+    { cwd, env: { ...process.env, ...env }, stdio: [input === undefined ? 'ignore' : 'pipe', stdout?.fd ?? 'pipe', stderr?.fd ?? 'pipe'], detached: grouped }); }
+  finally { await stdout?.close(); await stderr?.close(); }
   if (input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input); }
   return new Promise((done, reject) => {
     let terminationError, killTimer;
+    let capturedBytes = 0;
+    const buffers = { stdout: [], stderr: [] };
     const killOwned = exitSignal => {
       try { if (grouped) process.kill(-child.pid, exitSignal); else child.kill(exitSignal); }
       catch (error) { if (error.code !== 'ESRCH') throw error; }
     };
     const terminate = error => {
+      if (terminationError) return;
       terminationError = error; killOwned('SIGTERM');
       killTimer = setTimeout(() => killOwned('SIGKILL'), 1000);
     };
@@ -98,22 +101,34 @@ async function executeCommand(executable, args, { cwd = APP_ROOT, env = {}, logP
     const timer = setTimeout(() => terminate(new Error(executable + ' timed out; ' + stderrPath)), timeoutMs);
     signal?.addEventListener('abort', abort, { once: true });
     const clean = () => { clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener('abort', abort); };
+    if (captureOutput) for (const channel of ['stdout', 'stderr']) child[channel].on('data', data => {
+      const remaining = 16 * 1024 * 1024 - capturedBytes;
+      if (remaining > 0) buffers[channel].push(data.subarray(0, remaining));
+      capturedBytes += Math.min(data.length, remaining);
+      if (data.length > remaining) terminate(new Error('Captured command output exceeded 16 MiB'));
+    });
     child.once('error', error => { clean(); reject(error); });
     child.once('close', async (code, exitSignal) => {
       clean();
-      if (terminationError) reject(terminationError);
+      try {
+      const output = captureOutput ? { stdout: Buffer.concat(buffers.stdout).toString('utf8'), stderr: Buffer.concat(buffers.stderr).toString('utf8') } : {};
+      if (captureOutput && (terminationError || code !== 0 || exitSignal)) {
+        await writeFile(stdoutPath, output.stdout); await writeFile(stderrPath, output.stderr);
+      }
+      if (terminationError) { terminationError.command = { code, signal: exitSignal, ...output }; reject(terminationError); }
       else {
         const elapsedSeconds = (performance.now() - started) / 1000;
         let clientCpuPercent = null, cpuSeconds = null, resourceElapsedSeconds = null;
         if (timerExecutable) {
-          const text = await readFile(stderrPath, 'utf8');
+          const text = captureOutput ? output.stderr : await readFile(stderrPath, 'utf8');
           const number = name => { const matches = [...text.matchAll(new RegExp('^' + name + '\\s+([0-9.]+)\\s*$', 'gm'))]; return matches.length ? Number(matches.at(-1)[1]) : null; };
           const user = number('user'), system = number('sys'), real = number('real');
           if (user !== null && system !== null && real > 0) { cpuSeconds = user + system; resourceElapsedSeconds = real; clientCpuPercent = cpuSeconds / real * 100; }
         }
-        done({ code, signal: exitSignal, elapsedSeconds, stdoutPath, stderrPath, clientCpuPercent, cpuSeconds, resourceElapsedSeconds,
+        done({ code, signal: exitSignal, elapsedSeconds, stdoutPath, stderrPath, clientCpuPercent, cpuSeconds, resourceElapsedSeconds, ...output,
           clientCpuNote: clientCpuPercent === null ? 'Generator CPU was unavailable.' : 'User plus system CPU from /usr/bin/time -p divided by its wall time; 100% equals one core, with 0.01-second timing precision.' });
       }
+      } catch (error) { reject(error); }
     });
   });
 }

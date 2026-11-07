@@ -1,0 +1,47 @@
+{
+  "name": "oyster-benchmark-extension",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "dependencies": {
+    "@sap/cds": "^10",
+    "@sap/cds-oyster": "latest",
+    "@sap/cds-mtxs": "latest"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "deploy": "cds deploy --to sqlite:../provider/db/benchmark.sqlite"
+  },
+  "private": true,
+  "extends": "oyster-benchmark-provider",
+  "workspaces": [
+    ".base"
+  ],
+  "cds": {
+    "server": {
+      "port": 4006
+    },
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "url": "../provider/db/benchmark.sqlite"
+        },
+        "data": [
+          "../provider/db/data"
+        ]
+      },
+      "code-extensibility": {
+        "sandbox": "wasm"
+      }
+    },
+    "query": {
+      "limit": {
+        "default": 1000,
+        "max": 10000
+      }
+    }
+  },
+  "optionalDependencies": {
+    "@cap-js/sqlite": "^3"
+  }
+}

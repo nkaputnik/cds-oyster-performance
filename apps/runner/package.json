@@ -1,0 +1,26 @@
+{
+  "name": "oyster-benchmark-runner",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node stage.js",
+    "task": "node task.js"
+  },
+  "dependencies": {
+    "autocannon": "latest"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "files": [
+    "task.js",
+    "stage.js",
+    "shared.js",
+    "shared-evidence.js",
+    "Procfile",
+    "bench",
+    "apps/provider",
+    "apps/extension/srv",
+    "build-manifest.json"
+  ]
+}

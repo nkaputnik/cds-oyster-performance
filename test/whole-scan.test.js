@@ -5,7 +5,7 @@ const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { referenceChunks } = require('../bench/whole-scan.js');
-const { cpu } = require('../lib/workload.js');
+const { cpu } = require('../apps/provider/srv/lib/workload.js');
 
 test('external scan chunks cover sparse keys exactly once and preserve whole checksum', async () => {
   const root = await mkdtemp(join(tmpdir(), 'oyster-chunks-'));
