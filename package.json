@@ -12,6 +12,9 @@
     "deploy": "npm run deploy --workspace apps/extension",
     "benchmark": "node bench/run.js --suite short",
     "benchmark:long": "node bench/run.js --suite long",
+    "benchmark:java": "node bench/run.js --runtime java --suite short",
+    "benchmark:java:long": "node bench/run.js --runtime java --suite long",
+    "verify:java": "BENCHMARK_JAVA_TEST=1 node --test test/java-integration.test.js",
     "cloud:build": "node apps/runner/build.js gen/runner",
     "cloud:export": "node bench/cloud/export.js",
     "btp": "node bench/cloud/shared.js",
@@ -28,7 +31,9 @@
     "apps/provider/mtx/sidecar",
     "apps/runner",
     "apps/extension",
-    "apps/extension/.base"
+    "apps/extension/.base",
+    "apps/provider-java",
+    "apps/provider-java/mtx/sidecar"
   ],
   "devDependencies": {
     "@sap/cds-dk": "latest",

@@ -44,21 +44,21 @@ Rejection is a normal business outcome and needs its own latency budget. Expecte
 | Workload | Decision | Native ms | Oyster ms | Extra ms |
 | --- | --- | --- | --- | --- |
 | [Action](../apps/extension/srv/BenchmarkService/on-oysterValidation.js) | accepted | 0.174 | 0.889 | +0.715 |
-| [UPDATE](../apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-UPDATE.js) | accepted | 0.52 | 1.26 | +0.74 |
-| [Action through extension point](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidation.js) | rejected | 0.273 | 0.93 | +0.657 |
+| [Action](../apps/extension/srv/BenchmarkService/on-oysterValidation.js) | rejected | 0.23 | 0.954 | +0.723 |
 | [Action through extension point](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidation.js) | accepted | 0.184 | 0.852 | +0.668 |
+| [Action through extension point](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidation.js) | rejected | 0.273 | 0.93 | +0.657 |
+| [Action with lookup](../apps/extension/srv/BenchmarkService/on-oysterValidationRead.js) | accepted | 0.322 | 1.15 | +0.828 |
+| [Action with lookup](../apps/extension/srv/BenchmarkService/on-oysterValidationRead.js) | rejected | 0.369 | 1.218 | +0.849 |
+| [Action through extension point with lookup](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidationRead.js) | accepted | 0.338 | 1.099 | +0.761 |
+| [Action through extension point with lookup](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidationRead.js) | rejected | 0.391 | 1.181 | +0.79 |
 | [INSERT](../apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-CREATE.js) | accepted | 0.573 | 1.254 | +0.68 |
 | [INSERT](../apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-CREATE.js) | rejected | 0.262 | 0.989 | +0.728 |
-| [UPDATE](../apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-UPDATE.js) | rejected | 0.278 | 1.008 | +0.73 |
-| [Action](../apps/extension/srv/BenchmarkService/on-oysterValidation.js) | rejected | 0.23 | 0.954 | +0.723 |
-| [Action with lookup](../apps/extension/srv/BenchmarkService/on-oysterValidationRead.js) | accepted | 0.322 | 1.15 | +0.828 |
-| [UPDATE with lookup](../apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-UPDATE.js) | accepted | 0.631 | 1.502 | +0.871 |
-| [Action through extension point with lookup](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidationRead.js) | rejected | 0.391 | 1.181 | +0.79 |
-| [Action through extension point with lookup](../apps/extension/srv/BenchmarkExtensionService/on-oysterValidationRead.js) | accepted | 0.338 | 1.099 | +0.761 |
 | [INSERT with lookup](../apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-CREATE.js) | accepted | 0.663 | 1.61 | +0.947 |
 | [INSERT with lookup](../apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-CREATE.js) | rejected | 0.385 | 1.221 | +0.836 |
+| [UPDATE](../apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-UPDATE.js) | accepted | 0.52 | 1.26 | +0.74 |
+| [UPDATE](../apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-UPDATE.js) | rejected | 0.278 | 1.008 | +0.73 |
+| [UPDATE with lookup](../apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-UPDATE.js) | accepted | 0.631 | 1.502 | +0.871 |
 | [UPDATE with lookup](../apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-UPDATE.js) | rejected | 0.395 | 1.418 | +1.024 |
-| [Action with lookup](../apps/extension/srv/BenchmarkService/on-oysterValidationRead.js) | rejected | 0.369 | 1.218 | +0.849 |
 
 ```mermaid
 ---
@@ -500,6 +500,6 @@ Both app copies use the same model and retained CSVs. The CDS CLI deploys SQLite
 
 Run npm install and npm run benchmark for short, or npm run benchmark:long for repeated/larger workloads. The [README](../README.md) gives complete operator instructions. The runner starts and stops CAP and the load generator.
 
-[Detailed results](local-long-2026-11-06/details.md) retain the full named use-case chart catalog, comparisons, resource metrics, correctness checks and failures. [Exact observations](local-long-2026-11-06/results.csv), [CSV](local-long-2026-11-06/results.csv) and [manifest](local-long-2026-11-06/manifest.json) retain aggregate observations and source hashes. Failed cases retain diagnostic files. Report regeneration does not run new measurements.
+[Detailed results](local-long-2026-11-06/details.md) retain the full named use-case chart catalog, comparisons, resource metrics, correctness checks and failures. [CSV](local-long-2026-11-06/results.csv) and [manifest](local-long-2026-11-06/manifest.json) retain aggregate observations and source hashes. Failed cases retain diagnostic files. Report regeneration does not run new measurements.
 
-This example contains the main report and source hashes of its linked Oyster handlers. [Native handlers](../apps/provider/srv/benchmark-service.js), [extension-point delegation](../apps/provider/srv/extension-service.js), [constraint checks](../apps/provider/srv/lib/validation.js) and [calculation helpers](../apps/provider/srv/lib/workload.js) show the matching application code. These results use the recorded local working tree. Complete per-case details, measurements and raw timings remain in the local result directory `reports/bench-2026-11-06T14-21-27-043Z/`.
+Matching native code: [request handlers](../apps/provider/srv/benchmark-service.js), [extension-point delegation](../apps/provider/srv/extension-service.js), [constraint checks](../apps/provider/srv/lib/validation.js) and [calculation helpers](../apps/provider/srv/lib/workload.js).

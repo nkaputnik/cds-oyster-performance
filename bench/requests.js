@@ -28,10 +28,14 @@ function readSpec(scenario, fixture, { vu = 1 } = {}) {
   return spec;
 }
 
-function requestFor(scenario, fixture, { vu = 1, iteration = 0, clients = vu } = {}) {
+function requestFor(scenario, fixture, { vu = 1, iteration = 0, clients = vu, phase } = {}) {
   if (!Number.isSafeInteger(vu) || vu < 1) throw new Error('Invalid vu');
-  if (!Number.isSafeInteger(iteration) || iteration < 0 || (scenario.operation === 'create' && iteration >= CREATE_PARTITION))
+  const offset = phase === 'warmup' ? 3 : phase === 'measure' ? 50000 : 0;
+  if (!Number.isSafeInteger(iteration) || iteration < 0 || (scenario.operation === 'create' && iteration + offset >= CREATE_PARTITION))
     throw new Error('Invalid iteration: allocation supports fewer than 100000 iterations per VU');
+  if (scenario.operation === 'create' && phase === 'warmup' && iteration >= 49997)
+    throw new Error('INSERT warmup exceeded its key allocation');
+  iteration += offset;
   const root = '/benchmark';
   const route = endpoint(scenario);
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };

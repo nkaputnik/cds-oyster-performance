@@ -1,0 +1,33 @@
+{
+  "name": "provider-java-mtx",
+  "dependencies": {
+    "@sap/cds": "^10",
+    "@sap/cds-mtxs": "^4",
+    "@sap/cds-oyster": "latest"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "^3"
+  },
+  "engines": {
+    "node": "^24"
+  },
+  "scripts": {
+    "start": "cds-serve"
+  },
+  "cds": {
+    "profiles": [
+      "mtx-sidecar",
+      "java"
+    ],
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": { "url": "../../db.sqlite" }
+      },
+      "cds.xt.ExtensibilityService": {
+        "extension-allowlist": []
+      }
+    }
+  },
+  "private": true
+}

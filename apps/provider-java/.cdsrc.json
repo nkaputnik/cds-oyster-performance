@@ -1,0 +1,12 @@
+{
+  "profile": "with-mtx-sidecar",
+  "requires": {
+    "[production]": {
+      "multitenancy": true
+    },
+    "[with-mtx]": {
+      "multitenancy": true
+    },
+    "extensibility": true
+  }
+}

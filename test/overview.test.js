@@ -28,6 +28,10 @@ test('discovery chooses newest complete runs and ignores newer smoke, pilot, fai
       await writeFile(resolve(folder, 'manifest.json'), JSON.stringify({ startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-03-01T00:00:00Z', settings: { suite: 'short' }, runSummary: { passed: true, records: 1 }, ...change }));
       await writeFile(resolve(folder, 'results.json'), JSON.stringify([record]));
     }
+    const java = resolve(root, 'java'); await mkdir(java);
+    await writeFile(resolve(java, 'manifest.json'), JSON.stringify({ startedAt: '2026-02-02T00:00:00Z', finishedAt: '2026-03-01T00:00:00Z',
+      settings: { suite: 'short', runtime: 'java' }, environment: { execution: 'local', hostRuntime: 'java' }, runSummary: { passed: true, records: 1 } }));
+    await writeFile(resolve(java, 'results.json'), JSON.stringify([record]));
     await mkdir(resolve(root, 'broken')); await writeFile(resolve(root, 'broken/manifest.json'), '{');
     const runs = await discoverRuns(root, { requireFour: false });
     assert.equal(runs['local-short'].directory, resolve(root, 'newest'));

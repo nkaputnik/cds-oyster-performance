@@ -58,7 +58,7 @@
         "repetitions": 3
       },
       "hashes": {
-        "manifest.json": "cae139ae82a839096e4ec42ed94a9af545c88adf3a245a111bd6fac3c89c15c3",
+        "manifest.json": "6cb14c285102df10a6282e15992fc0cbe5f99a5f3498d21a1e204f448b7b9b5d",
         "results.csv": "f5a6626318551e29d46529a710594ec8d5124b8d59e62913750292102363a195"
       },
       "pairedGroups": 51
@@ -78,7 +78,7 @@
         "repetitions": 1
       },
       "hashes": {
-        "manifest.json": "2b87196e760e6ec372883913db1066c7e02516e6e3d97a6e2f7ffeeaa5cecff9",
+        "manifest.json": "9d06a4f24bf26a2fe8fd7dea3ce97303e8099e8218d2a85332786cf7ae87e151",
         "results.csv": "657a78464470a2a1e624414da67c9793614909c31e740f4cac63e65d23c1b54e"
       },
       "pairedGroups": 45

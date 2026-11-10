@@ -132,6 +132,7 @@ function cloudNetwork(baseUrl, mode, allowLoopback) {
 async function runCloudBenchmark(settings, { baseUrl = process.env.BENCHMARK_PROVIDER_URL, auth, reportDir,
   networkPath = process.env.BENCHMARK_NETWORK_PATH ?? 'container-to-container',
   environment = {}, signal, adapter, evidence, onProgress = () => {} } = {}) {
+  if (settings.runtime === 'java') throw new Error('Java benchmarks are local only. Use npm run benchmark:java.');
   const network = cloudNetwork(baseUrl, networkPath, Boolean(auth));
   const renewals = [];
   auth ||= createTenantAuth({ subdomain: process.env.BENCHMARK_SUBDOMAIN, tenantID: process.env.BENCHMARK_TENANT_ID, providerUrl: baseUrl,

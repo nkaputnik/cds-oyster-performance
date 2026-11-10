@@ -62,6 +62,7 @@ async function discoverRuns(root, { requireFour = true, onSkip = () => {} } = {}
       if (manifest.settings?.filter || manifest.settings?.pilot || !manifest.runSummary?.passed) continue;
     } catch (error) { if (error.code !== 'ENOENT') onSkip(directory, error.message); continue; }
     const execution = manifest.environment?.execution;
+    if (manifest.settings?.runtime === 'java' || manifest.environment?.hostRuntime === 'java') continue;
     if (execution && !['cloud', 'local'].includes(execution)) continue;
     if (!['short', 'long'].includes(manifest.settings?.suite) || !Number.isFinite(Date.parse(manifest.startedAt))) continue;
     const type = (execution === 'cloud' ? 'btp' : 'local') + '-' + manifest.settings.suite;

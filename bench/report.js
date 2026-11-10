@@ -65,6 +65,14 @@ function key(result, { mode = false, omit = [] } = {}) {
     omit.includes('load') ? null : result.load?.kind ?? null, omit.includes('load') ? null : result.load?.value ?? null,
     mode ? result.scenario?.mode ?? null : null]);
 }
+const naturalOrder = new Intl.Collator('en', { numeric: true }).compare;
+function compareRuns(a, b) {
+  return naturalOrder(a.scenario?.operation || '', b.scenario?.operation || '')
+    || naturalOrder((a.scenario?.mode || '').replace(/^(native|wasm)-/, ''), (b.scenario?.mode || '').replace(/^(native|wasm)-/, ''))
+    || naturalOrder(key(a), key(b))
+    || (a.repetition || 0) - (b.repetition || 0)
+    || naturalOrder(a.scenario?.mode || '', b.scenario?.mode || '');
+}
 function groups(results, options) {
   const grouped = new Map();
   for (const result of results) {
@@ -285,7 +293,7 @@ function charts(results) {
 }
 
 function answers(manifest, results, findings, callbacks) {
-  const cloud = manifest.environment?.execution === 'cloud';
+  const cloud = manifest.environment?.execution === 'cloud' || manifest.settings?.runtime === 'java';
   const matched = (questions, rows = findings) => rows.filter(row => row.n && questions.includes(row.question));
   const describe = rows => rows.length ? rows.map(row => `${row.id}: ${row.question}, ${display(row.mean)} ms`
     + `${finite(row.percent) ? ` (${display(row.percent)}%)` : ' (percentage unavailable)'}, n=${row.n}`).join('; ')
@@ -397,20 +405,23 @@ sequenceDiagram
 
 function buildDetailedReport(manifest = {}, results = []) {
   const cloud = manifest.environment?.execution === 'cloud';
+  const java = manifest.settings?.runtime === 'java';
+  const fields = java ? [...resourceFields, 'heapPeakMiB'] : resourceFields;
   const compact = manifest.reporting?.compact;
   // Legacy archives retain their uploaded source path; compact reports supply reporting.sourceRoot.
   if (cloud) results = results.map(result => ({ ...result, scenario: { ...result.scenario, sourceRoot: manifest.reporting?.sourceRoot || 'sources/extensions/benchmark/srv/' } }));
   const manifestIssues = validationIssues(manifest.validation);
   const performanceResults = manifestIssues.length ? [] : results;
-  const findingRows = findingEvidence(performanceResults).filter(row => !cloud || (!row.comparison.includes('cap-baseline') && row.question !== 'Installed plugin overhead'));
+  const findingRows = findingEvidence(performanceResults).filter(row => !(cloud || java) || (!row.comparison.includes('cap-baseline') && row.question !== 'Installed plugin overhead'));
   const callbackRows = callbackEvidence(performanceResults);
   const directCallbackRows = directCallbackEvidence(performanceResults);
-  const allGroups = groups(results, { mode: true });
-  const latencyRows = results.map(result => [runLabel(result) + (result.scenario.mixed ? ' (mixed traffic)' : ''), modeReference(result.scenario), ...(compact ? [] : [workload(result)]),
+  const orderedResults = [...results].sort(compareRuns);
+  const allGroups = groups(results, { mode: true }).sort((a, b) => compareRuns(a[0], b[0]));
+  const latencyRows = orderedResults.map(result => [runLabel(result) + (result.scenario.mixed ? ' (mixed traffic)' : ''), modeReference(result.scenario), ...(compact ? [] : [workload(result)]),
     ...statFields.map(name => result.stats?.[name]), result.scenario?.expectedCallbacks, ...(compact ? [] : [result.rawFile || unavailable])]);
   const latency = table(['Run', 'Mode', ...(compact ? [] : ['Workload']), 'Samples', 'Successes', 'Accepted requests', 'Expected rejections', 'Errors', 'Dropped starts', 'p50 (ms)', 'p95 (ms)', 'p99 (ms)', 'Mean (ms)',
     'Successful requests/s', 'Offered requests/s', 'Completed requests/s', 'Elapsed (s)', 'Sample cap reached', 'Expected callbacks', ...(compact ? [] : ['Raw file'])], latencyRows);
-  const resourceRows = results.map(result => [runLabel(result), modeReference(result.scenario), ...resourceFields.map(name => result.resources?.[name])]);
+  const resourceRows = orderedResults.map(result => [runLabel(result), modeReference(result.scenario), ...fields.map(name => result.resources?.[name])]);
   const variabilityRows = allGroups.map(group => {
     const validGroup = manifestIssues.length ? [] : group;
     const mean = metric(validGroup, 'meanMs');
@@ -419,7 +430,7 @@ function buildDetailedReport(manifest = {}, results = []) {
     return [modeReference(group[0].scenario), workload(group[0]), mean.n, mean.mean, mean.sd, mean.min, mean.max,
       p95.n, p95.mean, p95.sd, rps.n, rps.mean, rps.sd];
   });
-  const failureRows = results.filter(result => result.phase === 'limit' || result.expectedFailure || result.error
+  const failureRows = orderedResults.filter(result => result.phase === 'limit' || result.expectedFailure || result.error
     || result.stats?.successes === 0 || result.stats?.errors > 0 || result.stats?.droppedIterations > 0).map(result => [
     runLabel(result), modeReference(result.scenario), result.phase, result.expectedFailure, result.stats?.successes, result.stats?.errors, result.stats?.droppedIterations, result.error, result.rawFile]);
   const probeRows = results.flatMap(result => ['validation', 'probe'].filter(field => result[field] !== undefined)
@@ -449,7 +460,8 @@ function buildDetailedReport(manifest = {}, results = []) {
     '## Per-run resources',
     results.some(result => finite(result.wholeScanElapsedSeconds)) ? table(['Whole scan run', 'Mode', 'Whole rows', 'Bounded invocations', 'Whole elapsed (s)'],
       results.filter(result => finite(result.wholeScanElapsedSeconds)).map(result => [runLabel(result), modeReference(result.scenario), result.scenario?.wholeScanRows, result.stats?.samples, result.wholeScanElapsedSeconds])) : '',
-    table(['Run', 'Mode', 'Server CPU (%)', 'Peak RSS (MiB)', 'Event-loop p99 (ms)', 'GC count', 'GC time (ms)', 'Client CPU (%)'], resourceRows),
+    table(['Run', 'Mode', 'Server CPU (%)', 'Peak RSS (MiB)', 'Event-loop p99 (ms)', 'GC count', 'GC time (ms)', 'Client CPU (%)', ...(java ? ['Peak JVM heap (MiB)'] : [])], resourceRows),
+    java ? 'JVM heap is sampled every 200 ms during measurement. Process CPU uses JVM counters; 100% equals one core. GC count and time use JVM collector counters. JVM RSS and Node.js event-loop delay are unavailable. Heap is not resident memory. The MTX sidecar runs outside the measured provider process.' : '',
     cloud ? table(['Run', 'Generator CPU (%)', 'Generator peak RSS (MiB)', 'Generator event-loop p99 (ms)'], results.map(result => [runLabel(result), result.generatorResources?.cpuPercent, result.generatorResources?.rssPeakMiB, result.generatorResources?.eventLoopP99Ms])) : '',
     cloud ? 'Provider and generator samples belong to separate CF containers. CPU, RSS and event-loop evidence are needed to assess generator saturation. Missing HANA server diagnostics and scheduled-arrival sweeps leave database attribution and arrival-rate capacity unanswered.' : 'Client CPU is necessary to assess generator saturation. Unavailable client CPU or missing scheduled-arrival sweeps leave the capacity question unanswered. SQLite write serialization and client/server competition on the same host can affect results.',
     '## Measured charts',
@@ -482,7 +494,7 @@ function buildDetailedReport(manifest = {}, results = []) {
 
 function buildReport(manifest = {}, results = []) {
   if (manifest.environment?.execution === 'cloud') results = results.map(result => ({ ...result, scenario: { ...result.scenario, sourceRoot: manifest.reporting?.sourceRoot || 'sources/extensions/benchmark/srv/' } }));
-  return buildHumanReport(manifest, results, { groups, tuples, eligible, lowLoad, fanoutEvidence, validationIssues, summarize });
+  return buildHumanReport(manifest, results, { groups, tuples, eligible, lowLoad, fanoutEvidence, validationIssues, summarize, compareRuns });
 }
 const renderReport = buildReport;
 
@@ -499,6 +511,7 @@ function csv(results) {
     ...['kind', 'value'].map(field => [`load.${field}`, result => result.load?.[field]]),
     ...statFields.map(field => [`stats.${field}`, result => result.stats?.[field]]),
     ...resourceFields.map(field => [`resources.${field}`, result => result.resources?.[field]]),
+    ...(results.some(result => 'heapPeakMiB' in (result.resources || {})) ? [['resources.heapPeakMiB', result => result.resources?.heapPeakMiB]] : []),
     ...callbackByteFields.map(field => [field, result => field.split('.').reduce((value, name) => value?.[name], result)]),
     ...['rawFile', 'validation', 'probe', 'expectedFailure', 'error'].map(field => [field, result => result[field]]),
   ];

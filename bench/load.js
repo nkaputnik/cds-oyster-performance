@@ -18,7 +18,6 @@ async function measureHTTP({ url, scenario, fixture, load, seconds, phase = 'mea
   let probeAttempts = 0, probeErrors = 0, probeBusy = false, probeDropped = 0;
   const pendingProbes = new Set();
   const connections = load.value;
-  const offset = phase === 'warmup' ? 0 : 50000;
   const maximumSamples = 5000000;
   const sample = (values, duration) => {
     if (values.length >= maximumSamples) { samplesCapped = true; return; }
@@ -49,6 +48,16 @@ async function measureHTTP({ url, scenario, fixture, load, seconds, phase = 'mea
       setupClient(client) {
         const vu = ++nextClient;
         let iteration = 0, expectedStatus = 200, validRejection = false;
+        // Autocannon otherwise sends into a socket whose response announces closure.
+        const send = client._doRequest;
+        client._doRequest = function () {
+          if (!this.conn.writableEnded) send.call(this);
+        };
+        client.on('headers', response => {
+          if (!response.shouldKeepAlive) client.conn.end();
+        });
+        // With pipelining: 1, a new request replaces any unmatched request from a closed socket.
+        client.on('request', () => client.pipelinedRequests.clear());
         client.setRequests([{
           onResponse(status, body) {
             validRejection = false;
@@ -62,7 +71,7 @@ async function measureHTTP({ url, scenario, fixture, load, seconds, phase = 'mea
               const operation = iteration % 10 < 7 ? 'read' : iteration % 10 === 7 ? 'create' : iteration % 10 === 8 ? 'update' : 'action';
               active = { ...scenario, operation, table: operation === 'read' ? (scenario.readTable || 'SmallRows') : 'WriteRows' };
             }
-            const next = requestFor(active, fixture, { vu, iteration: offset + iteration++, clients: connections });
+            const next = requestFor(active, fixture, { vu, phase, iteration: iteration++, clients: connections });
             expectedStatus = next.expectedStatus;
             return { ...request, method: next.method, path: next.path, headers: { ...headers, ...next.headers }, body: next.body === undefined ? undefined : JSON.stringify(next.body) };
           },

@@ -22,7 +22,7 @@ async function command(executable, args, cwd = APP_ROOT, { signal } = {}) {
   });
 }
 async function deploy(options = {}) {
-  await command(resolve(APP_ROOT, 'node_modules/.bin/cds'), ['deploy', '--to', 'sqlite:../provider/db/benchmark.sqlite'], OYSTER_ROOT, options);
+  await command(resolve(APP_ROOT, 'node_modules/.bin/cds'), ['deploy', '--to', 'sqlite:' + (options.database || '../provider/db/benchmark.sqlite')], OYSTER_ROOT, options);
 }
 function inspectFixture(database = DATABASE_PATH) {
   const db = new DatabaseSync(database, { readOnly: true });
@@ -41,11 +41,11 @@ function inspectFixture(database = DATABASE_PATH) {
     return { tables, pragmas, schema };
   } finally { db.close(); }
 }
-async function loadFixture() {
-  await deploy();
+async function loadFixture(options = {}) {
+  await deploy(options);
   const hashes = {};
   for (const name of TABLES) hashes['apps/provider/db/data/perf-' + name + '.csv'] = await hashFile(resolve(APP_ROOT, 'apps/provider/db/data/perf-' + name + '.csv'));
-  return { deployedAt: new Date().toISOString(), source: 'CDS model and retained CSV files; cds deploy --to sqlite', ...inspectFixture(), hashes };
+  return { deployedAt: new Date().toISOString(), source: 'CDS model and retained CSV files; cds deploy --to sqlite', ...inspectFixture(options.database), hashes };
 }
 module.exports = { APP_ROOT, OYSTER_ROOT, DATABASE_PATH, TABLES, hashFile, command, deploy, inspectFixture, loadFixture };
 

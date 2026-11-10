@@ -48,6 +48,23 @@ test('writes use disjoint generated keys and enforce their integer allocation bo
   assert.throws(() => api.requestFor(create, fixture, { vu: 0 }), /vu/);
 });
 
+test('INSERT phases reserve correctness keys and never overlap warmup and measurement', () => {
+  const create = { ...base, operation: 'create', table: 'WriteRows' };
+  const key = options => api.requestFor(create, fixture, options).body.ID;
+  const checks = [0, 1, 2].map(iteration => key({ iteration }));
+  const warmupFirst = key({ phase: 'warmup', iteration: 0 });
+  const warmupLast = key({ phase: 'warmup', iteration: 49996 });
+  const measureFirst = key({ phase: 'measure', iteration: 0 });
+  const measureLast = key({ phase: 'measure', iteration: 49999 });
+  assert.ok(Math.max(...checks) < warmupFirst);
+  assert.ok(warmupLast < measureFirst);
+  assert.ok(measureFirst < measureLast);
+  assert.throws(() => key({ phase: 'warmup', iteration: 49997 }), /allocation/);
+  assert.throws(() => key({ phase: 'measure', iteration: 50000 }), /allocation/);
+  for (const phase of ['warmup', 'measure'])
+    assert.throws(() => key({ phase, iteration: -1 }), /iteration/);
+});
+
 test('updates partition actual sparse fixture keys by virtual user', () => {
   const s = { ...base, operation: 'update', table: 'WriteRows' };
   assert.equal(api.requestFor(s, fixture, { vu: 1, iteration: 900 }).path, '/benchmark/NoHandlerWriteRows(19)');

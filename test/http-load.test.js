@@ -82,3 +82,17 @@ test('expected constraint rejections are measured and unrelated 400 errors are f
     assert.equal(result.rawDurationsMs.length, result.stats.expectedRejections);
   } finally { await new Promise(done => server.close(done)); }
 });
+
+test('connection-close rejections keep per-request latency across reconnects', async () => {
+  const { server, url } = await listen((req, res) => {
+    req.resume();
+    res.writeHead(400, { 'Content-Type': 'application/json', Connection: 'close' });
+    res.end(JSON.stringify({ error: { message: 'Amount exceeds limit' } }));
+  });
+  try {
+    const result = await measureHTTP({ url, scenario: scenario({ mode: 'wasm-validate', validationOutcome: 'rejected' }), fixture, load: { kind: 'vus', value: 1 }, seconds: 1 });
+    assert.equal(result.stats.errors, 0);
+    assert.ok(result.stats.expectedRejections > 100);
+    assert.ok(result.stats.p95Ms < 50, 'Immediate rejections must not accumulate elapsed benchmark time');
+  } finally { await new Promise(done => server.close(done)); }
+});

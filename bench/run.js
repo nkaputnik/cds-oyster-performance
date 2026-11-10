@@ -2,7 +2,7 @@ const { resolve } = require('node:path');
 const { mkdir, readFile, writeFile, readdir } = require('node:fs/promises');
 const os = require('node:os');
 const { suite, shuffled } = require('./scenarios.js');
-const { APP_ROOT, OYSTER_ROOT, deploy, loadFixture, hashFile } = require('./fixture.js');
+const { APP_ROOT, OYSTER_ROOT, DATABASE_PATH, deploy, loadFixture, hashFile } = require('./fixture.js');
 const { startServer, executeCommand } = require('./process.js');
 const { requestFor } = require('./requests.js');
 const { verifyScenario, writeStateHash } = require('./verify.js');
@@ -11,8 +11,8 @@ const { compactResult, compactManifest } = require('./evidence-format.js');
 const { measureWholeScan } = require('./whole-scan.js');
 
 function parseArgs(args = process.argv.slice(2)) {
-  const settings = { suite: 'short', seed: 42, transport: 'http' };
-  const options = ['suite', 'warmup', 'duration', 'repetitions', 'seed', 'filter'];
+  const settings = { suite: 'short', seed: 42, transport: 'http', runtime: 'node' };
+  const options = ['suite', 'warmup', 'duration', 'repetitions', 'seed', 'filter', 'runtime'];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--help') { settings.help = true; continue; }
     const name = args[i].replace(/^--/, '');
@@ -21,6 +21,7 @@ function parseArgs(args = process.argv.slice(2)) {
     settings[name] = args[++i];
   }
   suite(settings.suite);
+  if (!['node', 'java'].includes(settings.runtime)) throw new Error('Unknown runtime: ' + settings.runtime);
   const short = settings.suite === 'short';
   settings.warmup = Number(settings.warmup ?? (short ? 2 : 3));
   settings.duration = Number(settings.duration ?? (short ? 4 : 10));
@@ -35,7 +36,8 @@ function parseArgs(args = process.argv.slice(2)) {
 }
 
 function planRuns(settings) {
-  const workloads = suite(settings.suite).filter(s => !settings.filter || new RegExp(settings.filter).test(s.id));
+  const workloads = suite(settings.suite).filter(s => (settings.runtime !== 'java' || s.mode !== 'cap-baseline')
+    && (!settings.filter || new RegExp(settings.filter).test(s.id)));
   const runs = workloads.map(scenario => ({ scenario, transport: 'http', load: scenario.benchmarkLoad || { kind: 'vus', value: 1 } }));
   return Array.from({ length: settings.repetitions }, (_, i) =>
     shuffled(runs, settings.seed + i).sort((a, b) => Number(a.scenario.mode !== 'cap-baseline') - Number(b.scenario.mode !== 'cap-baseline')).map(run => ({ ...run, repetition: i + 1 }))).flat();
@@ -73,7 +75,8 @@ async function executeRun(run, context) {
   try {
     const reference = context.reference;
     const stateHash = context.writeStateHash || writeStateHash;
-    const preflight = await verifyScenario(server, run.scenario, fixture, { signal, reference });
+    const referenceDatabase = context.referenceDatabase;
+    const preflight = await verifyScenario(server, run.scenario, fixture, { signal, reference, referenceDatabase });
     const beforeWrites = run.scenario.validationOutcome === 'rejected' ? await stateHash() : null;
     if (settings.warmup > 0) {
       const warmup = await runHTTP(run, context, 'warmup');
@@ -94,7 +97,7 @@ async function executeRun(run, context) {
     if (server.cloud && result.probe.errors) throw new Error('Provider probe failed');
     if (beforeWrites && beforeWrites !== await stateHash()) throw new Error('Rejected workload changed persisted write rows');
     result.validation = { preflight,
-      postflight: await verifyScenario(server, run.scenario, fixture, { rollback: false, iteration: 80001, signal, reference }),
+      postflight: await verifyScenario(server, run.scenario, fixture, { rollback: false, iteration: 1, signal, reference, referenceDatabase }),
       ...(beforeWrites ? { measuredWritesUnchanged: true } : {}), passed: true };
   } catch (error) {
     if (error.measurementSummary) Object.assign(result, { stats: error.measurementSummary.stats, probe: error.measurementSummary.probe, generatorResources: error.measurementSummary.generatorResources });
@@ -110,8 +113,8 @@ async function sourceHashes() {
   async function visit(root) {
     for (const entry of await readdir(resolve(APP_ROOT, root), { withFileTypes: true })) {
       const path = root ? root + '/' + entry.name : entry.name;
-      if (entry.isDirectory()) { if (['bench', 'apps'].includes(root ? root.split('/')[0] : entry.name) && !['data', 'node_modules', '.runs', '.git', 'reports', 'logs', 'gen'].includes(entry.name)) await visit(path); }
-      else if (/\.(mjs|js|cds|csn|json)$/.test(entry.name) && !entry.name.endsWith('.sqlite')) hashes[path] = await hashFile(resolve(APP_ROOT, path));
+      if (entry.isDirectory()) { if (['bench', 'apps'].includes(root ? root.split('/')[0] : entry.name) && !['data', 'node_modules', '.runs', '.git', 'reports', 'logs', 'gen', 'target', 'node', 'edmx'].includes(entry.name)) await visit(path); }
+      else if (/\.(mjs|js|cds|csn|json|java|xml|yaml|yml)$/.test(entry.name) && !entry.name.startsWith('.flattened-')) hashes[path] = await hashFile(resolve(APP_ROOT, path));
     }
   }
   await visit('');
@@ -119,16 +122,16 @@ async function sourceHashes() {
 }
 
 async function runBenchmark(settings) {
-  const fixture = await loadFixture();
+  const java = settings.runtime === 'java';
   const runs = planRuns(settings);
   if (!runs.length) throw new Error('No scenarios match the selected suite and filter');
-  const id = 'bench-' + new Date().toISOString().replace(/[:.]/g, '-');
+  const id = (java ? 'java-' : 'bench-') + new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = resolve(APP_ROOT, 'reports', id), rawDir = resolve(reportDir, 'raw');
   await mkdir(rawDir, { recursive: true });
   const controller = new AbortController();
   const interrupt = () => controller.abort(new Error('Benchmark interrupted'));
   process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
-  const manifest = { id, startedAt: new Date().toISOString(), settings, fixture,
+  const manifest = { id, startedAt: new Date().toISOString(), settings,
     commands: { argv: process.argv, cwd: process.cwd() },
     environment: { node: process.version, platform: os.platform(), arch: os.arch(), release: os.release(),
       cpus: os.cpus().map(cpu => ({ model: cpu.model, speedMHz: cpu.speed })), totalMemoryMiB: os.totalmem() / 1024 ** 2,
@@ -139,8 +142,12 @@ async function runBenchmark(settings) {
       'Generator CPU uses /usr/bin/time -p when available. 100% equals one CPU core. CPU alone does not establish generator saturation.',
       'Each app is stopped, redeployed from CSVs, and restarted once per repetition. Endpoint cases reuse that server and rotate seeded write rows.'] };
   const results = [];
-  let fatal, server, appBatch;
+  let fatal, server, appBatch, javaRuntime;
   try {
+    if (java) javaRuntime = await require('./java.js').createJavaRuntime({ logDir: resolve(reportDir, 'logs'), signal: controller.signal });
+    const fixture = javaRuntime ? javaRuntime.fixture : await loadFixture();
+    const database = java ? require('./java.js').JAVA_DATABASE : DATABASE_PATH;
+    manifest.fixture = fixture;
     const dependency = await executeCommand('npm', ['ls', '--all', '--json'], { logPrefix: resolve(rawDir, 'dependencies'), captureOutput: true, signal: controller.signal });
     manifest.environment.dependencyTreeExitCode = dependency.code;
     const tree = JSON.parse(dependency.stdout);
@@ -150,19 +157,23 @@ async function runBenchmark(settings) {
       const prefix = String(index + 1).padStart(4, '0') + '-' + run.transport + '-rep' + run.repetition;
       console.log('Run ' + (index + 1) + '/' + runs.length + ': ' + run.transport + ' ' + run.scenario.id + ' ' + run.load.kind + '=' + run.load.value);
       try {
-        const root = run.scenario.mode === 'cap-baseline' ? resolve(APP_ROOT, 'apps/baseline-plain') : OYSTER_ROOT;
+        const root = java ? require('./java.js').JAVA_ROOT : run.scenario.mode === 'cap-baseline' ? resolve(APP_ROOT, 'apps/baseline-plain') : OYSTER_ROOT;
         const batch = root + ':' + run.repetition;
         if (appBatch !== batch) {
           if (server) await server.stop();
           server = null;
-          if (appBatch !== undefined) await deploy({ signal: controller.signal });
-          server = await startServer({ root }, resolve(reportDir, 'logs', prefix), { signal: controller.signal });
+          if (appBatch !== undefined) {
+            if (javaRuntime) await javaRuntime.reset();
+            else await deploy({ signal: controller.signal });
+          }
+          server = javaRuntime ? await javaRuntime.start() : await startServer({ root }, resolve(reportDir, 'logs', prefix), { signal: controller.signal });
           manifest.environment.runtimes ||= {};
-          manifest.environment.runtimes[run.scenario.mode === 'cap-baseline' ? 'cap' : 'oyster'] = server.state;
+          manifest.environment.runtimes[java ? 'java' : run.scenario.mode === 'cap-baseline' ? 'cap' : 'oyster'] = server.state;
           appBatch = batch;
         }
         const caseFixture = { ...fixture, createOffset: index * 32 * 100000 };
-        results.push(...(await executeRun(run, { server, fixture: caseFixture, settings, rawDir, prefix, compactEvidence: true, signal: controller.signal })).map(compactResult));
+        results.push(...(await executeRun(run, { server, fixture: caseFixture, settings, rawDir, prefix, compactEvidence: true,
+          referenceDatabase: database, writeStateHash: () => writeStateHash(database), signal: controller.signal })).map(compactResult));
       } catch (error) {
         const failed = { ...run, phase: 'warm', stats: emptyStats(), resources: emptyResources(),
           expectedFailure: run.scenario.expectedFailure, error: errorText(error), validation: { passed: false },
@@ -171,11 +182,12 @@ async function runBenchmark(settings) {
       }
     }
     if (settings.suite === 'long' && !settings.filter && !controller.signal.aborted) {
-      await measureWholeScan({ fixture, settings, reportDir, compactEvidence: true, signal: controller.signal, results, server });
+      await measureWholeScan({ fixture, settings, reportDir, database, compactEvidence: true, signal: controller.signal, results, server });
     }
   } catch (error) { fatal = error; manifest.error = errorText(error); }
   finally {
     if (server) await server.stop();
+    if (javaRuntime) await javaRuntime.stop();
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     if (controller.signal.aborted) manifest.error ??= errorText(controller.signal.reason);
     manifest.finishedAt = new Date().toISOString();
@@ -196,6 +208,6 @@ module.exports = { parseArgs, planRuns, executeRun, sourceHashes, runBenchmark }
 
 if (require.main === module) {
   const settings = parseArgs();
-  if (settings.help) console.log('npm run benchmark -- --suite short|long --warmup SECONDS --duration SECONDS --repetitions COUNT --seed 42 --filter REGEX');
+  if (settings.help) console.log('npm run benchmark -- --runtime node|java --suite short|long --warmup SECONDS --duration SECONDS --repetitions COUNT --seed 42 --filter REGEX');
   else runBenchmark(settings).catch(error => { console.error(error); process.exitCode = 1; });
 }

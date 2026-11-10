@@ -1,6 +1,6 @@
 # CDS-Oyster performance benchmark
 
-Compare plain CAP, native JavaScript handlers, and Oyster WASM handlers locally against SQLite. The repo contains the data and application code. You start the benchmark; the runner deploys the database, starts CAP and the HTTP load generator, stops them, and writes the report.
+Compare native Node.js or Java handlers with JavaScript Oyster WASM handlers locally against SQLite. Node.js also includes a plain CAP control. The repo contains the data and application code. You start the benchmark; the runner deploys the database, starts CAP and the HTTP load generator, stops them, and writes the report.
 
 The [Oyster Performance](examples/oyster-performance-2026-11-07.md) compares completed local and BTP short/long results, including scenario-specific Oyster overhead and repetition ranges. Ordinary business constraints add 0.657–1.024 ms locally and 1.679–4.362 ms in BTP in the three-repetition long tests. Large returned results, sequential queries and concurrent traffic have separate costs.
 
@@ -25,6 +25,80 @@ npm run benchmark:long
 
 No global CDS CLI, separate server startup, database download, or data generation is needed. The generated provider and sidecar retain their CDS CLI dependency constraints; the benchmark and Oyster dependencies use latest. Each result records the versions actually installed, hardware, settings, and hashes of the source and CSV files. A local npm lockfile is created by installation but is not tracked; delete it before reinstalling if you want npm to resolve latest again.
 
+## Run locally with Java
+
+Use Node.js 24, Java 21 and Maven 3.9.14 or newer. Java also needs access to SAP's internal Maven repository at https://int.repositories.cloud.sap/artifactory/build-releases/, usually through SAP VPN. The POM declares this repository for com.sap.cds:cds-feature-code-extensions:5.2.0, which is currently absent from Maven Central. Node.js local benchmarks remain usable without Java, Maven, VPN or BTP credentials.
+
+Keep ports 4005 and 8080 free and run one benchmark at a time:
+
+~~~sh
+npm install
+npm run benchmark:java
+# After short finishes:
+npm run benchmark:java:long
+# Equivalent runtime selection, with optional filtering and shorter measurements:
+npm run benchmark -- --runtime java --filter '^action/SmallRows/(native|wasm)-compute/direct/' --warmup 1 --duration 2
+~~~
+
+The Java presets use the same timing settings and applicable workloads as Node.js: 100 short cases, 330 long cases and six whole-table observations. They omit the separate plain-CAP control. The runner builds Java once, starts its Node.js MTX sidecar, subscribes benchmark-java, activates the shared Oyster extension and starts Java. Cases reuse that provider. Between repetitions Java stops, the CDS CLI restores the application's retained CSV data in SQLite, and Java restarts. The extension remains activated. Ctrl-C stops the owned Java, sidecar and load-generator processes and saves partial results.
+
+If Maven is installed outside PATH, set BENCHMARK_MAVEN to its executable path for the command. Java must be on PATH, and JAVA_HOME, if set, must point to Java 21. The build uses the root npm workspace and its CDS CLI; it does not download a separate Node.js installation. Dependencies resolve during the build, before measurement. The local benchmark disables Tomcat's default connection retirement after 100 requests to match Node.js keep-alive behavior; otherwise autocannon records socket errors under load. Java starts with --debug=false so an inherited Node.js DEBUG environment variable does not enable Spring request logging.
+
+The projects are [apps/provider-java](apps/provider-java) and its [mtx/sidecar](apps/provider-java/mtx/sidecar). CDS import wrappers share the provider schema, service contracts and retained CSVs. BenchmarkHandler and ExtensionHandler port the native Node.js logic to Java, including service-scoped and direct database queries. Oyster sources remain unchanged in apps/extension. Java serves measured requests; the sidecar provides tenant lifecycle services and the extended model. Generated Java types and build output are ignored. Java uses apps/provider-java/db-benchmark-java.sqlite, separate from the Node.js database. This follows CAP Java's local tenant database discovery convention. Its mtx-sqlite Hikari pool uses one connection, as recommended by Capire for SQLite, serializing database transactions.
+
+Reports live in reports/java-<timestamp>/ with the same report.md, details.md, manifest.json, results.json and results.csv format. Regenerate them with npm run report -- reports/java-<timestamp>. Java manifests record Java, CAP Java, code extensions, Oyster runtime/framework and SQLite JDBC versions. JVM process CPU, sampled heap and garbage collection counters are recorded; JVM RSS and Node.js event-loop delay are unavailable. Heap is not RSS. Node.js runs in the sidecar and load generator, outside the measured Java provider process.
+
+The Java feature currently bundles Oyster framework 0.5.5; the published Node.js/BTP reports used 0.5.6. Results compare native and Oyster within the selected runtime and installed versions. Completed Java examples: [short run](examples/java-short-2026-11-10.md) and [long run](examples/java-long-2026-11-10.md). All 100 short and 336 long observations passed, including six million-row checks in long. The existing four-input overview continues to select Node.js local and BTP runs; Java runs are excluded.
+
+Verify the Java setup without a full benchmark:
+
+~~~sh
+npm run verify:java
+~~~
+
+This builds and tests Java, provisions and activates the tenant, checks every applicable long-suite scenario including persistence and rollback, verifies reset preservation, and performs two bounded measurements plus native/Oyster whole-table processing. The ordinary npm test suite skips this Java integration check so it does not require the Java toolchain or internal Maven access.
+
+For manual inspection, build from apps/provider-java with mvn --batch-mode --no-transfer-progress package. Start these in separate terminals from the repository root:
+
+~~~sh
+# Terminal 1:
+cd apps/provider-java/mtx/sidecar
+npm start
+# Terminal 2, after tenant subscription and extension activation below:
+cd apps/provider-java
+java -jar srv/target/provider-java-exec.jar --spring.profiles.active=with-mtx --debug=false
+~~~
+
+Subscribe and build the extension from a third terminal:
+
+~~~sh
+# From the repository root:
+npx cds subscribe benchmark-java --to http://localhost:4005
+cd apps/extension
+npx cds build --profile extension-build
+cd ../..
+node - <<'JS'
+const fs = require('node:fs/promises');
+(async () => {
+  const extension = (await fs.readFile('apps/extension/gen/extension.tgz')).toString('base64');
+  const response = await fetch('http://localhost:4005/-/cds/extensibility/push', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extension, tag: 'oyster-benchmark-extension', tenant: 'benchmark-java' })
+  });
+  if (!response.ok) throw new Error(await response.text());
+})();
+JS
+~~~
+
+The extension-build profile packages the model and handler sources without copying the provider CSVs. Let the CLI select its mtx-extension task: with the current Oyster plugin, explicitly passing --for mtx-extension compiles code annotations into the archive that the sidecar then adds again, causing duplicate execution. The Java sidecar uses the standard local Java dummy-auth preset. The supported push API supplies the tenant explicitly; the CDS push CLI derives it from authentication instead. The local Java mock user benchmark, with an empty password, selects benchmark-java:
+
+~~~sh
+curl -u benchmark: http://localhost:8080/__benchmark/status
+curl -u benchmark: http://localhost:8080/benchmark/NoHandlerSmallRows
+~~~
+
+Stop both manual servers before starting an automatic benchmark. This Java configuration is local only; BTP deployment and shared access continue to use the existing Node.js provider.
+
 ## Choose a version
 
 | | Short: npm run benchmark | Long: npm run benchmark:long |
@@ -32,7 +106,7 @@ No global CDS CLI, separate server startup, database download, or data generatio
 | Target duration | Under 15 minutes | Up to 90 minutes |
 | Independent repetitions | 1 | 3 |
 | Warmup / measurement per case | 2 / 4 seconds | 3 / 10 seconds |
-| Ordinary measured runs | 108 | 363 |
+| Ordinary measured runs | 106 | 351 |
 | CRUD and custom actions | Baseline, empty, business constraints, CQL read/write and selected synthetic comparisons | Same, repeated |
 | Business constraints | 32 cases: fixed limit or one lookup; accepted and rejected INSERT, UPDATE, action and extension-point requests | Same, repeated |
 | READ tables | 1,000 rows and 1,000,000 rows | Same |
@@ -48,7 +122,15 @@ The completed test runs on November 6, 2026 took **11 minutes 38 seconds for sho
 
 ## Review the result
 
-Completed local examples from November 6, 2026: [short run](examples/local-short-2026-11-06.md) and [long run](examples/local-long-2026-11-06.md). BTP examples from November 7: [short run](examples/btp-short-2026-11-07.md) and [long run](examples/btp-long-2026-11-07.md). The [performance overview](examples/oyster-performance-2026-11-07.md) explains overhead across all four tests. Main example reports sit directly in `examples/`; matching subfolders contain detailed charts, exact CSV observations and metadata with source hashes. Handler links point to the repository implementation. Long includes three independent repetitions and verified processing of the complete million-row table.
+Completed examples:
+
+| Runtime / location | Short | Long |
+| --- | --- | --- |
+| Node.js / local, November 6 | [Report](examples/local-short-2026-11-06.md) | [Report](examples/local-long-2026-11-06.md) |
+| Node.js / BTP, November 7 | [Report](examples/btp-short-2026-11-07.md) | [Report](examples/btp-long-2026-11-07.md) |
+| Java / local, November 10 | [Report](examples/java-short-2026-11-10.md) | [Report](examples/java-long-2026-11-10.md) |
+
+The [performance overview](examples/oyster-performance-2026-11-07.md) explains overhead across the four Node.js local/BTP tests. Java reports remain separate and compare native Java with JavaScript Oyster handlers. Main example reports sit directly in `examples/`; matching subfolders contain detailed charts, exact CSV observations and metadata with source hashes. Handler links point to the repository implementation. Long includes three independent repetitions and verified processing of the complete million-row table. All examples use the current report format and logical workload ordering; regeneration preserves their recorded measurements and source hashes.
 
 The BTP short and long tests took 17 minutes 38 seconds and 107 minutes 8 seconds. All 102 short and 351 long measurements passed, including six whole-table measurements in long. Reports include the HTTPS CF router path between the separate generator and provider. Local and BTP timings have different hardware, databases and request paths, so their difference does not isolate one infrastructure cost.
 
@@ -178,7 +260,7 @@ The operator guide covers owner export through cds bind and cloud:export. Resume
 
 ## Application and data setup
 
-All application projects live under apps/: baseline-plain/ is the local control without Oyster, extension/ holds the Oyster extension and its pulled base model, provider/ holds the CAP/MTX provider and shared data, and runner/ holds the CF benchmark runner. The benchmark harness, local server bootstrap and report generators live in bench/. The root contains workspace configuration and commands, with no application scaffold. Generated local SQLite storage lives in apps/provider/db/benchmark.sqlite.
+All application projects live under apps/: baseline-plain/ is the local control without Oyster, extension/ holds the Oyster extension and its pulled base model, provider/ holds the Node.js CAP/MTX provider and shared data, provider-java/ holds the local Java provider and its MTX sidecar, and runner/ holds the CF benchmark runner. The benchmark harness, local server bootstrap and report generators live in bench/. The root contains workspace configuration and commands, with no application scaffold. Generated Node.js SQLite storage lives in apps/provider/db/benchmark.sqlite.
 
 The local Oyster application lives in apps/extension; apps/baseline-plain/package.json declares only CAP and SQLite. Both reuse the provider model and native implementations in apps/provider. CAP discovers plugins normally from each application's dependencies. Native handlers run in the Oyster application without a sandbox handler, so native-versus-Oyster comparisons share the same plugin environment. The separate plain-CAP app supplies the control without Oyster. The repository root orchestrates these applications through npm commands.
 
@@ -217,7 +299,11 @@ Calculation and CQL prefixes also expose SmallRows and LargeRows for READ. Valid
 
 UPDATE requests cycle through the 1,000 existing WriteRows. Concurrent clients use separate row partitions. INSERT requests allocate distinct keys per case, client and iteration. Warmup, measurement and correctness checks use separate ranges. Lookup keys and action/write auxiliary keys rotate too. This lets multiple cases share a database deployment. READ handlers with auxiliary writes select and update the first SideEffectRows row on both paths, so that comparison includes one SELECT and one UPDATE.
 
-The two local entry points are tracked wrappers. Edit native models, services and libraries in apps/provider, and Oyster handlers in apps/extension; the wrappers reuse that source. Application code, Oyster handlers, the harness and tests use CommonJS with .js filenames.
+Each INSERT client reserves iterations 0, 1 and 2 for preflight, postflight and rollback checks. Warmup uses 3 through 49,999; measurement uses 50,000 through 99,999. Exceeding either timed allocation fails the case instead of reusing keys. The HTTP runner honors server-initiated connection closure and clears unmatched request timestamps before sending on a replacement connection, keeping rejection latency per request.
+
+Report tables group rows by operation, handler scenario and workload dimensions, with native/Oyster variants adjacent within each repetition. Numeric dimensions sort numerically. JSON and CSV retain the measured execution order. Regenerate saved reports with `npm run report -- reports/<run-id>` without running new measurements.
+
+The two Node.js local entry points are tracked wrappers. Edit shared models and native Node.js services/libraries in apps/provider, native Java handlers in apps/provider-java, and Oyster handlers in apps/extension. Node.js application code, Oyster handlers, the harness and Node.js tests use CommonJS with .js filenames.
 
 For manual inspection of the root app:
 

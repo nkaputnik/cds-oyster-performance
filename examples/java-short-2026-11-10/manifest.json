@@ -1,0 +1,506 @@
+{
+  "id": "java-2026-11-10T09-38-24-937Z",
+  "startedAt": "2026-11-10T09:38:24.939Z",
+  "settings": {
+    "suite": "short",
+    "seed": 42,
+    "transport": "http",
+    "runtime": "java",
+    "warmup": 2,
+    "duration": 4,
+    "repetitions": 1
+  },
+  "commands": {
+    "argv": [
+      "/Users/D034457/.nvm/versions/node/v24.15.0/bin/node",
+      "/Users/D034457/git/cds-oyster-performance/bench/run.js",
+      "--runtime",
+      "java",
+      "--suite",
+      "short"
+    ],
+    "cwd": "/Users/D034457/git/cds-oyster-performance"
+  },
+  "environment": {
+    "node": "v24.15.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "27.2.0",
+    "cpus": [
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      },
+      {
+        "model": "Apple M2 Pro",
+        "speedMHz": 2400
+      }
+    ],
+    "totalMemoryMiB": 32768,
+    "sourceHashes": {
+      "apps/baseline-plain/package.json": "6d4ba81f8e12b903193d0424686566fb5c402db29daf871deb2a5f1e843ca6fa",
+      "apps/baseline-plain/server.js": "5a099109169c2714e4771af498ce4f8b44565f3f9577189a766ff177ca8887b4",
+      "apps/baseline-plain/srv/benchmark-service.cds": "5f27a952b9dae9c8249f870d37e4069726107f8f1bba18627a3e74b888ef6108",
+      "apps/baseline-plain/srv/benchmark-service.js": "21207e328b3a27f519187e75cccff762d441d9e1bf40c0de2d8f744c7c0c39fb",
+      "apps/baseline-plain/srv/extension-service.cds": "c38d34494c0b02602d81dcc1a01ae79ae7b7378a00b3f11710dd196608bab45c",
+      "apps/baseline-plain/srv/extension-service.js": "b849b1a6ae8b7aca067b6dcb259826eba362d6405837f9f18146c660793bea27",
+      "apps/extension/.base/index.csn": "0850cc28fd8b61e770063d66ec1cffd6645d7495f02c9f00e82d82efd516ff91",
+      "apps/extension/.base/package.json": "693e394f176fc64bf8342db801eb99b74be237d02293370b31fe6776b753c98a",
+      "apps/extension/package.json": "90dde82aba0d1e9d3452b69cd60f48847ff2738f68f0ab0ac1e7e1455e21d20a",
+      "apps/extension/server.js": "b2e95972762a170c27109eefad5c376d8de579fcac7ab04493e0bacf018cd29b",
+      "apps/extension/srv/BenchmarkExtensionService/on-oysterCalculation.js": "b370fd3f835929fca9dfa3c8e097b1222e70dd3211d062bf776cde0f9aa8cf16",
+      "apps/extension/srv/BenchmarkExtensionService/on-oysterCqlRead.js": "13693aacb722408ce29b807685367131cce34365453a6db98b9b0803a2580a5a",
+      "apps/extension/srv/BenchmarkExtensionService/on-oysterCqlWrite.js": "1f4819dd33e10e8a943aa0c661ff80a4ed09551ad8d23fef17dd87b76b74b4b9",
+      "apps/extension/srv/BenchmarkExtensionService/on-oysterEmpty.js": "d36c0ff185865d2eaee7eebcd10417f709ec50a2dd39abab4472cd166263f4be",
+      "apps/extension/srv/BenchmarkExtensionService/on-oysterValidation.js": "1e1b28b458e8619d90f74a67e55ef441dd5295fde42c54402fa378d0e3025e8d",
+      "apps/extension/srv/BenchmarkExtensionService/on-oysterValidationRead.js": "35f4d1c8b55693257b485360b97654287fa84de5d449004d030e5b12ab7b7190",
+      "apps/extension/srv/BenchmarkService/OysterCalculationLargeRows/after-READ.js": "0f6fc64e6e972dad8ce950e1f65bbd7286e0671e594f74d6398da090ee2bd48a",
+      "apps/extension/srv/BenchmarkService/OysterCalculationSmallRows/after-READ.js": "0f6fc64e6e972dad8ce950e1f65bbd7286e0671e594f74d6398da090ee2bd48a",
+      "apps/extension/srv/BenchmarkService/OysterCalculationWriteRows/before-CREATE.js": "4272ddfb2361e75e6dc2b9023c0e11c621fe04bc19aa2492c6eecd7b2014ad14",
+      "apps/extension/srv/BenchmarkService/OysterCalculationWriteRows/before-UPDATE.js": "4272ddfb2361e75e6dc2b9023c0e11c621fe04bc19aa2492c6eecd7b2014ad14",
+      "apps/extension/srv/BenchmarkService/OysterCqlReadLargeRows/after-READ.js": "746ba43a2bea76b071b5a70aadabb278d81b937e19689383137b8397947d1fde",
+      "apps/extension/srv/BenchmarkService/OysterCqlReadSmallRows/after-READ.js": "746ba43a2bea76b071b5a70aadabb278d81b937e19689383137b8397947d1fde",
+      "apps/extension/srv/BenchmarkService/OysterCqlReadWriteRows/before-CREATE.js": "961b231726ac0bc2349730f5f78ced949ca34ef53244d85591c661f0b1ba3370",
+      "apps/extension/srv/BenchmarkService/OysterCqlReadWriteRows/before-UPDATE.js": "961b231726ac0bc2349730f5f78ced949ca34ef53244d85591c661f0b1ba3370",
+      "apps/extension/srv/BenchmarkService/OysterCqlWriteLargeRows/after-READ.js": "885179c00b59ea8986779bd52e50478522285c2039a145bf45199c5bed7a9613",
+      "apps/extension/srv/BenchmarkService/OysterCqlWriteSmallRows/after-READ.js": "885179c00b59ea8986779bd52e50478522285c2039a145bf45199c5bed7a9613",
+      "apps/extension/srv/BenchmarkService/OysterCqlWriteWriteRows/before-CREATE.js": "bbb9e4d35dc174474087b770248bba3cbbf39b63ca82870bf1df1e17cf35c7fd",
+      "apps/extension/srv/BenchmarkService/OysterCqlWriteWriteRows/before-UPDATE.js": "bbb9e4d35dc174474087b770248bba3cbbf39b63ca82870bf1df1e17cf35c7fd",
+      "apps/extension/srv/BenchmarkService/OysterEmptyLargeRows/after-READ.js": "d7c0332f5c528370b3d8f7684de9a89a56eeeab1600fdad867e7ca954a0125c1",
+      "apps/extension/srv/BenchmarkService/OysterEmptySmallRows/after-READ.js": "d7c0332f5c528370b3d8f7684de9a89a56eeeab1600fdad867e7ca954a0125c1",
+      "apps/extension/srv/BenchmarkService/OysterEmptyWriteRows/before-CREATE.js": "449444874806a0c2980be2d5e7a01eef196fbb78283f8996152bf9dec1deab55",
+      "apps/extension/srv/BenchmarkService/OysterEmptyWriteRows/before-UPDATE.js": "449444874806a0c2980be2d5e7a01eef196fbb78283f8996152bf9dec1deab55",
+      "apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-CREATE.js": "2c074e14d443068ecfc2095137d6e77e1f3d02e2b0452fe65dfeba86c4da5ad4",
+      "apps/extension/srv/BenchmarkService/OysterValidationReadWriteRows/before-UPDATE.js": "32ef941620345d3a2df6af5362a737904c7e2f72103c597706e5060cf658d9ce",
+      "apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-CREATE.js": "fe31122e71d9b4f1cb70b12ced6a60fb9fd518a9f58bc56a9e252595dfcba75b",
+      "apps/extension/srv/BenchmarkService/OysterValidationWriteRows/before-UPDATE.js": "ed4e02269fee97bde5c5d07296901dc4ce8c985a4c633b2b86393498c7467f44",
+      "apps/extension/srv/BenchmarkService/on-oysterCalculation.js": "b370fd3f835929fca9dfa3c8e097b1222e70dd3211d062bf776cde0f9aa8cf16",
+      "apps/extension/srv/BenchmarkService/on-oysterCqlRead.js": "13693aacb722408ce29b807685367131cce34365453a6db98b9b0803a2580a5a",
+      "apps/extension/srv/BenchmarkService/on-oysterCqlWrite.js": "1f4819dd33e10e8a943aa0c661ff80a4ed09551ad8d23fef17dd87b76b74b4b9",
+      "apps/extension/srv/BenchmarkService/on-oysterLookupBatch.js": "112d6dca622ff27f31da02f2ba8094ab94d434a187e646fa977ebc61926d1622",
+      "apps/extension/srv/BenchmarkService/on-oysterLookupIndividual.js": "12e264e0d4738422b1deb82a44c8bc6e67af88ad56589a95cbdb3c393f17aecd",
+      "apps/extension/srv/BenchmarkService/on-oysterNoop.js": "449444874806a0c2980be2d5e7a01eef196fbb78283f8996152bf9dec1deab55",
+      "apps/extension/srv/BenchmarkService/on-oysterScan.js": "a205177bde01770782f5dd1c6faff4f2b8f1a4f2c183ff0a5f9600d393475d2b",
+      "apps/extension/srv/BenchmarkService/on-oysterValidation.js": "1e1b28b458e8619d90f74a67e55ef441dd5295fde42c54402fa378d0e3025e8d",
+      "apps/extension/srv/BenchmarkService/on-oysterValidationRead.js": "35f4d1c8b55693257b485360b97654287fa84de5d449004d030e5b12ab7b7190",
+      "apps/extension/srv/index.cds": "7d41a61b525cd420b48db3eb9191ade2d9d9bd115dc47f91079585de3caf9065",
+      "apps/provider/.deploy/app-router/package-lock.json": "09b9d5877a67a65e48a260e0badf888427001535ed33672f23af752341443a7d",
+      "apps/provider/.deploy/app-router/package.json": "a10eaf9801a39f73fd49dca03b09fc3f2e8e0c7231e179050700cb70b3360e05",
+      "apps/provider/.deploy/app-router/xs-app.json": "1d978404fc52b1b1808f8167c02c967b84101edf65d3d4787f47dc0acd96113b",
+      "apps/provider/db/evidence.cds": "74250e0e0133bfa6cd2f35f7d646f6975c003a51dc8cd823bc6c52b2442943bb",
+      "apps/provider/db/schema.cds": "8be719b3a99c4027b48e5e1d0818a2bde4257826457c84490e321934e58137f1",
+      "apps/provider/mtx/sidecar/package-lock.json": "2b00b740b8e4c88e728d84cd15b32f3b9cb0d2522d3506f5ae8aeb9b47665a6d",
+      "apps/provider/mtx/sidecar/package.json": "d13cc691acb1006dd57b15795dbb4ac4a28114a2db078e530126c3c7346e18a8",
+      "apps/provider/package-lock.json": "9029a0c720449418d55be2a06689c668d5310c836639494c297b49982641616d",
+      "apps/provider/package.json": "43f8b2274788ef48e575da96ae99e2d6b47610ec68414e149d72562d8324f2d2",
+      "apps/provider/srv/admin-service.cds": "e796e04966f1363ad7b594fae1916de46d0bfe370b0ffdcc3c018596a55dc7bc",
+      "apps/provider/srv/admin-service.js": "e461f34d1a8227af3cd1e4d59fdb22023d522292b408a0e47a3a66b8e8d1e942",
+      "apps/provider/srv/benchmark-service.cds": "8bac71a3758925f387950cbb1e3411700b62c2fe17cd9543f8749502bc6e76cf",
+      "apps/provider/srv/benchmark-service.js": "4b0c68b66f7786c115e822e0987d8c0124a0b49b3f79d98ddf088b4048c23fd9",
+      "apps/provider/srv/evidence-service.cds": "2d66a2a58798591628220690fa8715651a43213ab35da97b7dcf40adbaf85d07",
+      "apps/provider/srv/evidence-service.js": "70b51010752b69d916dbc52e6455270afb64af1290a2757868a1c76d81af5275",
+      "apps/provider/srv/extension-service.cds": "3ff599db92e66eda03fa42a2a1a53b09483019c68dc1e3f5521d7afacf88af8e",
+      "apps/provider/srv/extension-service.js": "549bb1dcdb7bad38c57b358b50b56ab113ec5880867c8f64fbcadb10ab411119",
+      "apps/provider/srv/lib/cloud-control.js": "9152539da27d60f0d1a15f37ac4dda07fd66860d788b3e64c7c4a3f7d6ea9210",
+      "apps/provider/srv/lib/diagnostics.js": "64705192a43c77a717d1f2c246695646b0fd1490d02ad76cc3db769f383d2ab2",
+      "apps/provider/srv/lib/fixture-data.js": "08df4c42bc5db53c0811ece57140022093f1e7d98e6a4e883d07f52a08e4e67e",
+      "apps/provider/srv/lib/fixture-reference.js": "64947e38d5cca1a9d9ae9b6f119a55919ad79114cff2aabf779ef99926bae490",
+      "apps/provider/srv/lib/provider-state.js": "cc12c1076627965db384258e1fc7c4406047fb0ba0c97fe7c061493f0b86ff09",
+      "apps/provider/srv/lib/resources.js": "cc5af7fd7786f791ed5ea2ffac6ba20bd13aa7eb0cf2f6619e7fc5d142ae308d",
+      "apps/provider/srv/lib/validation.js": "21a780d4a04b7dcc75c52d0b90296116c943eb169ca9991941210bc96cf9a66a",
+      "apps/provider/srv/lib/workload.js": "799dfd8f304679e66b22db6c7a59a54e7df327808f6d481282870222f48dc87b",
+      "apps/provider-java/.cdsrc.json": "372c8d9829ef7a9d96272cd7a0474c2f8f596f5711fdb90de074eab89d3e8539",
+      "apps/provider-java/db/schema.cds": "2da6c6dccd0d164f10d1307827973c0d6bd0992e0cd43d235caae116ca4ac600",
+      "apps/provider-java/mtx/sidecar/package.json": "484f9b29986635414653c681d66d7edb06281568e578d71732cd253d7cfa3fda",
+      "apps/provider-java/package.json": "19aef843010cba8630338e498399bd4aba846dd86a4a1af6f4ce40f6a23974aa",
+      "apps/provider-java/pom.xml": "d43270a1907b9467a0d51b58848f91faab770f1be5429c7e55e11e3de94a1890",
+      "apps/provider-java/srv/pom.xml": "332598d08c96c1f731aae779e4b7f03b30fb4ef425b057e9a4f7d2e8090fa7a8",
+      "apps/provider-java/srv/services.cds": "30d61ff52cb6ec79695ed5a4b0a129458ebc8f37a7374f981417acbae94adf76",
+      "apps/provider-java/srv/src/main/java/org/capire/benchmark/Application.java": "654226fa1dc0902b6a2a7cdbe0614f13e00da7a156fa5ff6e6b8d3a8debee37f",
+      "apps/provider-java/srv/src/main/java/org/capire/benchmark/BenchmarkControl.java": "0116e395c402edf72010712fc1a13ade8959b9fe3d4be5e1c11d6f3dfe6ac8fd",
+      "apps/provider-java/srv/src/main/java/org/capire/benchmark/BenchmarkHandler.java": "7fe0d8ee338d2eff7c5412546f095a6dd0a9e40a18fcdee6421ecb212cd81f36",
+      "apps/provider-java/srv/src/main/java/org/capire/benchmark/ExtensionHandler.java": "22d881b1d534f8203872d8ef65dd925d0333720c41c8fc2c2a191a0c074f4c64",
+      "apps/provider-java/srv/src/main/java/org/capire/benchmark/Workload.java": "e661158fd7eefd12818c8fc959f47601ae926e2198ec4fbe7e69c7b79d880e42",
+      "apps/provider-java/srv/src/main/resources/application.yaml": "b808eac568932c94c30b4b14369c44dbf0809f2d28fde7a85c8065fc3f329902",
+      "apps/provider-java/srv/src/test/java/org/capire/benchmark/NativeHandlersTest.java": "476452aa82772fc28c07d7cfa934ebbce3d21eddf6f565b737f6853177631ab8",
+      "apps/provider-java/srv/src/test/java/org/capire/benchmark/WorkloadTest.java": "4005c99a8edea60565c68270034569cb9775e5ef280520820f51da66712e37e0",
+      "apps/runner/build.js": "3375141e87a2a2da374eb134973414ad11b3ea4427fbdf963ee7975a74991eb6",
+      "apps/runner/package-lock.json": "04e92d2c974c782b257dabb03db9acbea0479a606be443ed97cf77db93559b23",
+      "apps/runner/package.json": "5f899ffdece4da9b9b1c65ec125da1596eec92197d2851ccdf8ff1892a60004e",
+      "apps/runner/shared-evidence.js": "e8cf4bfedee8278649d9b5cba9a74bcb7626c0751267df56fe1558449f37d894",
+      "apps/runner/shared.js": "f15710d122611a69622619aa4482c280e3e454fe185e9834e0b6a96ce3d83aba",
+      "apps/runner/stage.js": "22f9b6fc6dc7b525959e85afb13cb72aba1056d1f9a7e6f67147e4ceb882a487",
+      "apps/runner/task.js": "32f873a159cdf014fa01f53de67058fb8ac5b80b189911aaf3988cd2e5f0d02c",
+      "bench/cloud/auth.js": "47c1d85d6dae69082f1981660ed40e9af87e114df935be7e374fc9fc0610a3ea",
+      "bench/cloud/evidence.js": "4b6b3862920c73ce0518367acc6ffa805d9c4bc59585dbee0b08c1dd81bddf9b",
+      "bench/cloud/export.js": "d0b4993287d3a8023f8431ebe3ea9558a32bc9314c0a05d6b831405ab0350b7c",
+      "bench/cloud/fixture.js": "f27b46882ed45dd0e22e719fafb88f40fd578e8c78ff3b1a2fa564aad229487f",
+      "bench/cloud/login-service.js": "b89dcfb1346fbfa0a8ae155170d0c72a69a9df152151159c7275ba72975bb6b6",
+      "bench/cloud/run.js": "cb88c0c41585e3d67e81510d42ac63aa5d9ffef0974571aee24b7a52ccd1ff5f",
+      "bench/cloud/shared.js": "bcafb795cbb7ba5d8348f9948d9a17d3fb04d3343740fb0a751e41054c0457d6",
+      "bench/evidence-format.js": "0d0a376e4624bea0dbdda3380df07dc3fcc21912a0807918d94e18b88ad8a1eb",
+      "bench/fixture.js": "0c30e7a1d1ff2b365e0018b9a8eacaa8c0755bbd7dd7c308f21cd2ac664d4dfa",
+      "bench/java.js": "c880aabb443df651341bc3cc0f547e06899ae17bd681ce548284305dfcd87b86",
+      "bench/load-worker.js": "7383f54a1695b0281e235ecc976429b4faad0a3e30014c9529322926c2bc4736",
+      "bench/load.js": "7fd7b3db6fa15e649c542cf84888f6e655d869f858dff099fa330310fe5e0e58",
+      "bench/overview-input.js": "a3dfeea5c7f1e6bce10600438a3b87db3061801c7b3e232aa15f86252bd85406",
+      "bench/overview-view.js": "a7a5abb10468fc1bf8962e8de02bbdd2c94532040b97d2ab1cb0685e0780b8c5",
+      "bench/overview.js": "86891fb70755f1be787293b0914540b582591812eda377b57430c9081df908c5",
+      "bench/process.js": "c5549a05750e9e06753fbee7ea5825ac96ebe2edfe936d617c009bef919e6837",
+      "bench/report-view.js": "a11267091b6668b2a9f91faee86d0ac08b9469bd697d87dd614379462cd83d3d",
+      "bench/report.js": "ca959a9b041348aaad3b3216f8236ed6c3a3c0e0e31e2ae4d54ad7365d41fe01",
+      "bench/reports.js": "85bcce9b8c7a63982ccdcc5c51e0b1fb7148ea246eddc748aba8c4efc894bca4",
+      "bench/requests.js": "fa4eab2fc7457551d0e434c79216a1f771a3602529ac93992f28a5e8c33ef72a",
+      "bench/resources.js": "d3ecfe04ef2fc7b0d41626377486b1f313fd12e171a1b6d98be125aa75cede2e",
+      "bench/run.js": "c371b1e49956e56e70732526470457671a8bd40318fb2116941b28fff8b9cd0b",
+      "bench/scenarios.js": "b33f714b6a8a59ad03c8cdf58e7538d3c8fd0a94e655ee55d39f018365d6df8b",
+      "bench/server.js": "e2b85f4d365e15e55e4b60f9155cfbb3d763668130efa491bc4a16bb61f9c80e",
+      "bench/verify.js": "d9693e4c6df4c70e6afbf60cd6b878105d168d7c2ab3f2cf0f45af3ab272b97c",
+      "bench/whole-scan.js": "bdddce1d8821b2ebcbd81b8b71cf796c6332d6c4ac738e80501eeca6ccb89901",
+      "mta.shared.yaml": "24f6538c213402b2a233276583c3f97ae68f49dfa191f39ed32ca71e1fa75fcc",
+      "mta.yaml": "636977a09aa296be6ca2394ae9d7b2595b5d04538a12ce20306ae576c3382488",
+      "package-lock.json": "b6f7242a17ccb2ad2e36eb8a6c49d602be413f38c13d201e49a294f63f7052d9",
+      "package.json": "07f84b56e516114a86d6aba82b8ddd6f497ff6dde88edbca24be71b57753c8b7",
+      "xs-security.json": "0de0a2acda1d4725f5d3f6bcb62efc40b3ec8f3a11329e7f2e286c55c347437c"
+    },
+    "dependencyTreeExitCode": 0,
+    "dependencies": {
+      "@cap-js/sqlite": "3.1.2",
+      "@sap/cds-dk": "10.2.1",
+      "@sap/cds-mtxs": "4.2.1",
+      "@sap/cds-oyster": "0.5.6",
+      "@sap/cds": "10.2.2",
+      "autocannon": "8.0.0",
+      "baseline-plain": "1.0.0",
+      "oyster-benchmark-app": "1.0.0",
+      "oyster-benchmark-extension": "1.0.0",
+      "oyster-benchmark-runner": "1.0.0",
+      "provider-java-cds": "1.0.0"
+    },
+    "runtimes": {
+      "java": {
+        "tenant": "benchmark-java",
+        "hostRuntime": "java",
+        "plugins": [
+          "com.sap.cds:cds-feature-code-extensions"
+        ],
+        "engine": "oyster",
+        "annotations": [
+          {
+            "name": "BenchmarkService.OysterCqlWriteWriteRows",
+            "phase": "before",
+            "event": "CREATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlWriteWriteRows",
+            "phase": "before",
+            "event": "UPDATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlWriteSmallRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterValidationReadWriteRows",
+            "phase": "before",
+            "event": "CREATE"
+          },
+          {
+            "name": "BenchmarkService.OysterValidationReadWriteRows",
+            "phase": "before",
+            "event": "UPDATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlReadLargeRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterEmptyWriteRows",
+            "phase": "before",
+            "event": "CREATE"
+          },
+          {
+            "name": "BenchmarkService.OysterEmptyWriteRows",
+            "phase": "before",
+            "event": "UPDATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlReadWriteRows",
+            "phase": "before",
+            "event": "CREATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlReadWriteRows",
+            "phase": "before",
+            "event": "UPDATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCalculationSmallRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterEmptyLargeRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlReadSmallRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterCalculationWriteRows",
+            "phase": "before",
+            "event": "CREATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCalculationWriteRows",
+            "phase": "before",
+            "event": "UPDATE"
+          },
+          {
+            "name": "BenchmarkService.OysterEmptySmallRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterCalculationLargeRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkService.OysterValidationWriteRows",
+            "phase": "before",
+            "event": "CREATE"
+          },
+          {
+            "name": "BenchmarkService.OysterValidationWriteRows",
+            "phase": "before",
+            "event": "UPDATE"
+          },
+          {
+            "name": "BenchmarkService.OysterCqlWriteLargeRows",
+            "phase": "after",
+            "event": "READ"
+          },
+          {
+            "name": "BenchmarkExtensionService.oysterCqlWrite",
+            "phase": "on",
+            "event": "oysterCqlWrite"
+          },
+          {
+            "name": "BenchmarkService.oysterCqlWrite",
+            "phase": "on",
+            "event": "oysterCqlWrite"
+          },
+          {
+            "name": "BenchmarkService.oysterScan",
+            "phase": "on",
+            "event": "oysterScan"
+          },
+          {
+            "name": "BenchmarkExtensionService.oysterEmpty",
+            "phase": "on",
+            "event": "oysterEmpty"
+          },
+          {
+            "name": "BenchmarkService.oysterValidationRead",
+            "phase": "on",
+            "event": "oysterValidationRead"
+          },
+          {
+            "name": "BenchmarkService.oysterCqlRead",
+            "phase": "on",
+            "event": "oysterCqlRead"
+          },
+          {
+            "name": "BenchmarkService.oysterNoop",
+            "phase": "on",
+            "event": "oysterNoop"
+          },
+          {
+            "name": "BenchmarkService.oysterValidation",
+            "phase": "on",
+            "event": "oysterValidation"
+          },
+          {
+            "name": "BenchmarkExtensionService.oysterCqlRead",
+            "phase": "on",
+            "event": "oysterCqlRead"
+          },
+          {
+            "name": "BenchmarkExtensionService.oysterValidation",
+            "phase": "on",
+            "event": "oysterValidation"
+          },
+          {
+            "name": "BenchmarkService.oysterCalculation",
+            "phase": "on",
+            "event": "oysterCalculation"
+          },
+          {
+            "name": "BenchmarkService.oysterLookupBatch",
+            "phase": "on",
+            "event": "oysterLookupBatch"
+          },
+          {
+            "name": "BenchmarkExtensionService.oysterCalculation",
+            "phase": "on",
+            "event": "oysterCalculation"
+          },
+          {
+            "name": "BenchmarkExtensionService.oysterValidationRead",
+            "phase": "on",
+            "event": "oysterValidationRead"
+          },
+          {
+            "name": "BenchmarkService.oysterLookupIndividual",
+            "phase": "on",
+            "event": "oysterLookupIndividual"
+          }
+        ],
+        "limits": {
+          "maxDepth": 10,
+          "maxMemory": 4194304,
+          "maxCallbackCalls": 100,
+          "maxTime": 3000
+        },
+        "versions": {
+          "oysterRuntime": "2.1.0",
+          "java": "21.0.13.0.3",
+          "codeExtensions": "5.2.0",
+          "capJava": "5.2.0",
+          "oysterFramework": "0.5.5",
+          "sqlite": "3.53.2.1"
+        }
+      }
+    }
+  },
+  "validation": {
+    "csvDeploymentVerified": true
+  },
+  "notes": [
+    "HTTP throughput uses observed generator elapsed time; latency contains only successful responses.",
+    "Probe counts are separate. Scheduled arrivals and dropped workload iterations are unavailable from autocannon.",
+    "Generator CPU uses /usr/bin/time -p when available. 100% equals one CPU core. CPU alone does not establish generator saturation.",
+    "Each app is stopped, redeployed from CSVs, and restarted once per repetition. Endpoint cases reuse that server and rotate seeded write rows."
+  ],
+  "fixture": {
+    "deployedAt": "2026-11-10T09:38:41.080Z",
+    "source": "CDS model and retained CSV files; cds deploy --to sqlite",
+    "hashes": {
+      "apps/provider/db/data/perf-SmallRows.csv": "4a7bdbd4851607a2fa22524bd4db8d8361813a5c8a5b47826d71a4c532ca8a9a",
+      "apps/provider/db/data/perf-LargeRows.csv": "ceefad384cc700ed3366cde6f4d8e88c26afb94daca938567b3ad2ac6225392c",
+      "apps/provider/db/data/perf-WriteRows.csv": "8a1ab271811071eb83fa6ac075be2c625aa90a900a4d884485252f88c048a4a1",
+      "apps/provider/db/data/perf-LookupRows.csv": "8b46fe21f92b833d7bab5eb7486aa5df87708fdb55167f0825039b76cc7a917f",
+      "apps/provider/db/data/perf-SideEffectRows.csv": "bf09dc0f2814be9b863c388ecd6709ecf2d891773c1db87bcdbb6bca2826bb14"
+    },
+    "tables": {
+      "SmallRows": {
+        "count": 1000,
+        "uniqueKeys": 1000,
+        "minID": 123201,
+        "maxID": 124200,
+        "minValue": 0,
+        "maxValue": 100,
+        "minTextBytes": 11,
+        "maxTextBytes": 11
+      },
+      "LargeRows": {
+        "count": 1000000,
+        "uniqueKeys": 1000000,
+        "minID": 4888521,
+        "maxID": 5888520,
+        "minValue": 0,
+        "maxValue": 100,
+        "minTextBytes": 12,
+        "maxTextBytes": 12
+      },
+      "WriteRows": {
+        "count": 1000,
+        "uniqueKeys": 1000,
+        "minID": 3259136,
+        "maxID": 3260135,
+        "minValue": 0,
+        "maxValue": 100,
+        "minTextBytes": 12,
+        "maxTextBytes": 12
+      },
+      "LookupRows": {
+        "count": 1000,
+        "uniqueKeys": 1000,
+        "minID": 3868513,
+        "maxID": 3869512,
+        "minValue": 0,
+        "maxValue": 100,
+        "minTextBytes": 12,
+        "maxTextBytes": 12
+      },
+      "SideEffectRows": {
+        "count": 1000,
+        "uniqueKeys": 1000,
+        "minID": 1380586,
+        "maxID": 1381585,
+        "minValue": 0,
+        "maxValue": 100,
+        "minTextBytes": 12,
+        "maxTextBytes": 12
+      }
+    },
+    "sources": {}
+  },
+  "finishedAt": "2026-11-10T09:49:21.300Z",
+  "runSummary": {
+    "plannedRuns": 100,
+    "passed": true,
+    "records": 100,
+    "failedRecords": 0
+  },
+  "reporting": {
+    "compact": true,
+    "sourceRoot": "../../apps/extension/srv/"
+  }
+}

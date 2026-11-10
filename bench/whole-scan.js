@@ -25,9 +25,9 @@ function referenceChunks(database, { rows = 1000000, chunkRows = 50000, iteratio
   } finally { db.close(); }
 }
 
-async function measureWholeScan({ fixture, settings, reportDir, signal, results, server, compactEvidence = false }) {
+async function measureWholeScan({ fixture, settings, reportDir, signal, results, server, database = DATABASE_PATH, compactEvidence = false }) {
   const rows = fixture.tables.LargeRows.count;
-  const chunks = referenceChunks(DATABASE_PATH, { rows });
+  const chunks = referenceChunks(database, { rows });
   for (let repetition = 1; repetition <= settings.repetitions; repetition++) {
     for (const mode of shuffled(['native-compute', 'wasm-compute'], settings.seed + repetition)) {
       signal.throwIfAborted();

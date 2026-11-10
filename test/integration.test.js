@@ -129,7 +129,7 @@ test('fixed CAP and WASM endpoints share each server and preserve persistence, c
           assert.equal(validation.passed, true);
           if (operation === 'create') assert.equal(validation.rollback.passed, true);
           if (operation === 'update') {
-            const next = await verifyScenario(server, s, caseFixture, { diagnostics: true, rollback: false, iteration: 80001 });
+            const next = await verifyScenario(server, s, caseFixture, { diagnostics: true, rollback: false, iteration: 1 });
             assert.notEqual(next.persistedID, validation.persistedID);
           }
         }

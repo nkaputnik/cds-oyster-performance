@@ -1,0 +1,46 @@
+
+---
+spring:
+  config:
+    activate:
+      on-profile: default
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      max-lifetime: 0
+      maximum-pool-size: 1
+    url: jdbc:sqlite:file::memory:?cache=shared
+  sql.init.mode: never
+---
+cds:
+  odataV4.endpoint.path: /
+  dataSource.mtx-sqlite.hikari:
+    maximum-pool-size: 1
+    minimum-idle: 1
+    max-lifetime: 0
+  query.limit:
+    default: 1000
+    max: 10000
+  code-extensions:
+    enabled: true
+    allowWriteStatements: true
+    limits:
+      max-callback-calls: 100
+      max-execution-time: PT3S
+      max-allocated-memory: 4194304
+      max-call-stack-depth: 10
+  security.mock.users:
+    - name: benchmark
+      tenant: benchmark-java
+      roles: [authenticated-user]
+  multi-tenancy:
+    sidecar:
+      url: http://localhost:4005/
+spring:
+  config:
+    activate:
+      on-profile: with-mtx
+debug: false
+logging.level.root: WARN
+# Match Node.js keep-alive behavior throughout a timed benchmark window.
+server.tomcat.max-keep-alive-requests: -1

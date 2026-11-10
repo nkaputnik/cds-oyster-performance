@@ -17,6 +17,9 @@
     ".base"
   ],
   "cds": {
+    "[extension-build]": {
+      "requires": { "db": { "data": [] } }
+    },
     "server": {
       "port": 4006
     },

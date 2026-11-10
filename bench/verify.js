@@ -25,7 +25,7 @@ function expectedWork(s, fixture, seed, lookupID = fixture.tables.LookupRows.ids
 }
 
 function validateActivation(s, state) {
-  const oyster = state.plugins?.includes('@sap/cds-oyster');
+  const oyster = state.plugins?.includes(state.hostRuntime === 'java' ? 'com.sap.cds:cds-feature-code-extensions' : '@sap/cds-oyster');
   if (s.mode === 'cap-baseline') assert.equal(oyster, false, 'CAP baseline must omit Oyster');
   else {
     assert.equal(oyster, true, 'Oyster plugin must be active');
@@ -37,7 +37,8 @@ function validateActivation(s, state) {
     if (s.hook) { name = 'BenchmarkExtensionService.' + route.action.replace('Extension', ''); phase = 'on'; event = route.action.replace('Extension', ''); }
     else if (route.action) { name = 'BenchmarkService.' + route.action; phase = 'on'; event = route.action; }
     else { name = 'BenchmarkService.' + route.entity; phase = s.operation === 'read' ? 'after' : 'before'; event = s.operation === 'read' ? 'READ' : s.operation === 'create' ? 'CREATE' : 'UPDATE'; }
-    assert.ok(state.annotations.some(a => a.name === name && a.phase === phase && a.event === event), 'Static Oyster handler for ' + name);
+    assert.equal(state.annotations.filter(a => a.name === name && a.phase === phase && a.event === event).length, 1,
+      'Expected exactly one static Oyster handler for ' + name);
   }
   return { passed: true, handlerActive: true, engine: state.engine, limits: state.limits, plugins: state.plugins };
 }
@@ -162,7 +163,7 @@ async function readReference(s, fixture, request = requestFor(s, fixture), { dat
   } finally { db.close(); }
 }
 
-async function verifyRollback(server, fixture, { iteration = 85000, signal, scenario: s } = {}) {
+async function verifyRollback(server, fixture, { iteration = 2, signal, scenario: s } = {}) {
   const route = endpoint({ ...s, operation: 'create', table: 'WriteRows' });
   const ID = requestFor({ ...s, operation: 'create', table: 'WriteRows' }, fixture, { iteration }).body.ID;
   const effectID = fixture.tables.SideEffectRows.ids[0];
@@ -178,7 +179,7 @@ async function verifyRollback(server, fixture, { iteration = 85000, signal, scen
   return { passed: true, rejectionStatus: response.status, insertedRowAbsent: true, auxiliaryUnchanged: true, response };
 }
 
-async function verifyScenario(server, s, fixture, { transport = 'http', diagnostics = false, rollback = true, iteration = 80000, signal, referenceDatabase,
+async function verifyScenario(server, s, fixture, { transport = 'http', diagnostics = false, rollback = true, iteration = 0, signal, referenceDatabase,
   referenceAdapter, reference = referenceAdapter, headers } = {}) {
   if (headers) server = { ...server, headers: { ...server.headers, ...headers } };
   assert.ok(!s.expectedFailure, 'Limit probes cannot pass normal correctness preflight');
@@ -190,7 +191,7 @@ async function verifyScenario(server, s, fixture, { transport = 'http', diagnost
   const before = s.validationOutcome === 'rejected' && s.operation === 'update' ? await getWritten() : null;
   if (diagnostics) await publicRequest(server, { method: 'POST', path: '/__benchmark/diagnostics/reset' }, { signal });
   const response = await publicRequest(server, request, { signal });
-  const scanChecksum = s.operation === 'scan' ? await (reference ? reference.scanReference(s) : scanReference(s)) : undefined;
+  const scanChecksum = s.operation === 'scan' ? await (reference ? reference.scanReference(s) : scanReference(s, { database: referenceDatabase })) : undefined;
   const readRows = s.operation === 'read' ? await (reference ? reference.readReference(s, fixture, request) : readReference(s, fixture, request, { database: referenceDatabase })) : undefined;
   const validation = { ...validateResponse(s, fixture, request, response, { scanChecksum, readRows }), activation, response };
   if (diagnostics) {
@@ -262,6 +263,7 @@ async function writeStateHash(database = DATABASE_PATH) {
 async function main() {
   const { parseArgs, planRuns } = require('./run.js');
   const settings = parseArgs(['--suite', 'short', '--repetitions', '1', ...process.argv.slice(2)]);
+  if (settings.runtime === 'java') throw new Error('Use npm run verify:java for Java MTX correctness and measurements.');
   if (settings.help) { console.log('npm run verify -- --suite short|long --filter REGEX'); return; }
   const fixture = await loadFixture();
   const id = 'verify-' + new Date().toISOString().replace(/[:.]/g, '-');
