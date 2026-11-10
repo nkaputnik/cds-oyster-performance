@@ -43,15 +43,16 @@ async function measureHTTP({ url, scenario, fixture, load, seconds, phase = 'mea
   const abort = () => active?.stop();
   try {
     result = await new Promise((done, reject) => { active = autocannon({
-      url, connections, pipelining: 1, duration: seconds, timeout: 5, ...(overallRate ? { overallRate } : {}),
+      url, connections, pipelining: 1, duration: seconds, timeout: seconds + 10, ...(overallRate ? { overallRate } : {}),
       excludeErrorStats: true,
       setupClient(client) {
         const vu = ++nextClient;
-        let iteration = 0, expectedStatus = 200, validRejection = false;
+        let iteration = 0, expectedStatus = 200, expectedRows = null, validResponse = true, actualRows = null;
         // Autocannon otherwise sends into a socket whose response announces closure.
+        // Also skip new requests in the last 100 ms to avoid in-flight requests when autocannon tears down connections at duration end.
         const send = client._doRequest;
         client._doRequest = function () {
-          if (!this.conn.writableEnded) send.call(this);
+          if (!this.conn.writableEnded && performance.now() - started < seconds * 1000 - 100) send.call(this);
         };
         client.on('headers', response => {
           if (!response.shouldKeepAlive) client.conn.end();
@@ -60,9 +61,16 @@ async function measureHTTP({ url, scenario, fixture, load, seconds, phase = 'mea
         client.on('request', () => client.pipelinedRequests.clear());
         client.setRequests([{
           onResponse(status, body) {
-            validRejection = false;
+            validResponse = true;
+            actualRows = null;
             if (expectedStatus === 400 && status === 400) {
-              try { validRejection = JSON.parse(body).error?.message === 'Amount exceeds limit'; } catch { /* Invalid error bodies fail the workload. */ }
+              try { validResponse = JSON.parse(body).error?.message === 'Amount exceeds limit'; } catch { validResponse = false; }
+            } else if (status === 200 && expectedRows !== null) {
+              try {
+                const value = JSON.parse(body)?.value;
+                actualRows = Array.isArray(value) ? value.length : null;
+                validResponse = actualRows === expectedRows;
+              } catch { validResponse = false; }
             }
           },
           setupRequest(request) {
@@ -73,18 +81,20 @@ async function measureHTTP({ url, scenario, fixture, load, seconds, phase = 'mea
             }
             const next = requestFor(active, fixture, { vu, phase, iteration: iteration++, clients: connections });
             expectedStatus = next.expectedStatus;
+            const shape = active.queryShape || 'page';
+            expectedRows = active.operation === 'read' && shape !== 'key' && shape !== 'non-indexed' ? active.rows : null;
             return { ...request, method: next.method, path: next.path, headers: { ...headers, ...next.headers }, body: next.body === undefined ? undefined : JSON.stringify(next.body) };
           },
         }]);
         client.on('response', (status, bytes, durationMs) => {
-          if (status === expectedStatus && (expectedStatus !== 400 || validRejection)) {
+          if (status === expectedStatus && validResponse) {
             successes++;
             if (expectedStatus === 400) expectedRejections++; else acceptedRequests++;
             sample(rawDurationsMs, durationMs);
           }
           else {
             statusErrors++;
-            if (failures.length < 10) failures.push({ status, expectedStatus, durationMs });
+            if (failures.length < 10) failures.push({ status, expectedStatus, durationMs, ...(expectedRows !== null ? { expectedRows, actualRows } : {}) });
           }
         });
       },
