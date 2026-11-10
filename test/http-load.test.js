@@ -83,6 +83,45 @@ test('expected constraint rejections are measured and unrelated 400 errors are f
   } finally { await new Promise(done => server.close(done)); }
 });
 
+test('collection read succeeds when response contains the expected row count', async () => {
+  const rows = Array.from({ length: 10 }, (_, i) => ({ ID: i + 1 }));
+  const { server, url } = await listen((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ value: rows }));
+  });
+  try {
+    const result = await measureHTTP({ url, scenario: scenario({ mode: 'cap-baseline', operation: 'read' }), fixture, load: { kind: 'vus', value: 1 }, seconds: 1 });
+    assert.ok(result.stats.successes > 0);
+    assert.equal(result.stats.errors, 0);
+  } finally { await new Promise(done => server.close(done)); }
+});
+
+test('collection read fails when response row count does not match expected', async () => {
+  const { server, url } = await listen((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ value: [{ ID: 1 }] }));
+  });
+  try {
+    const result = await measureHTTP({ url, scenario: scenario({ mode: 'cap-baseline', operation: 'read' }), fixture, load: { kind: 'vus', value: 1 }, seconds: 1 });
+    assert.equal(result.stats.successes, 0);
+    assert.ok(result.stats.errors > 0);
+    assert.equal(result.failures[0].expectedRows, 10);
+    assert.equal(result.failures[0].actualRows, 1);
+  } finally { await new Promise(done => server.close(done)); }
+});
+
+test('collection read fails on malformed JSON response', async () => {
+  const { server, url } = await listen((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{"value": [{');
+  });
+  try {
+    const result = await measureHTTP({ url, scenario: scenario({ mode: 'cap-baseline', operation: 'read' }), fixture, load: { kind: 'vus', value: 1 }, seconds: 1 });
+    assert.equal(result.stats.successes, 0);
+    assert.ok(result.stats.errors > 0);
+  } finally { await new Promise(done => server.close(done)); }
+});
+
 test('connection-close rejections keep per-request latency across reconnects', async () => {
   const { server, url } = await listen((req, res) => {
     req.resume();
